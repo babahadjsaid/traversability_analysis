@@ -1,0 +1,12 @@
+traversability_analysis:
+  ros__parameters:
+    pointCloudTopic: "lio_sam/mapping/map_global"
+    costMapTopic: "map"
+
+    map_frame_id: "map"
+    circle_radius: 20.0
+    cell_resolution: 0.1
+    T_diff: 0.05
+    T_high: 0.05
+    T_low: 0.05
+    max_height: 2.0
