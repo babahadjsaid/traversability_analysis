@@ -5,8 +5,8 @@ traversability_analysis:
 
     map_frame_id: "map"
     circle_radius: 20.0
-    cell_resolution: 0.1
-    T_diff: 0.05
-    T_high: 0.05
-    T_low: 0.05
-    max_height: 2.0
+    cell_resolution: 0.2
+    T_diff: 0.16
+    T_high: 0.16
+    T_low: -0.2
+    max_height: 1.5

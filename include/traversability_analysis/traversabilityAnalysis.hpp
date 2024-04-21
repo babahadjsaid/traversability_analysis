@@ -10,6 +10,8 @@ namespace traversability_analysis {
 
 class TraversabilityAnalysis : public ParamServer{
  public:
+   long int numFrames=0;
+   float avgTime;
     /*!
     * Constructor.
     */
@@ -18,7 +20,7 @@ class TraversabilityAnalysis : public ParamServer{
     void PointCloudHandler(sensor_msgs::msg::PointCloud2::SharedPtr pointCloudMsg);
 
     
-
+   
 
  private:
    //Sync
@@ -31,6 +33,7 @@ class TraversabilityAnalysis : public ParamServer{
    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointCloudSub_;
    rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr costMapPub_;
    Eigen::MatrixXf kernel;
+   
 
 };
 

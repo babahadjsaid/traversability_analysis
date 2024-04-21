@@ -30,7 +30,7 @@
 // Boost
 #include <boost/thread/recursive_mutex.hpp>
 
-typedef pcl::PointXYZINormal PointType;
+typedef pcl::PointXYZI PointType;
 
 class ParamServer : public rclcpp::Node
 {

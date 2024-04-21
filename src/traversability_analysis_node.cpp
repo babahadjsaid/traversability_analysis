@@ -22,5 +22,6 @@ int main(int argc, char** argv) {
     exec.spin();
 
     rclcpp::shutdown();
+    std::cout<<"The algorithm took on average "<<(TA->avgTime/TA->numFrames)*1000<<" to treat each frame."<<std::endl;
     return 0;
 }
