@@ -18,7 +18,7 @@ class TraversabilityAnalysis : public ParamServer{
     explicit TraversabilityAnalysis(std::string node_name, const rclcpp::NodeOptions & options);
 
     void PointCloudHandler(sensor_msgs::msg::PointCloud2::SharedPtr pointCloudMsg);
-
+    double normalPDF(double x, double mean, double variance);
     
    
 
