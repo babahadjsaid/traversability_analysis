@@ -1,6 +1,7 @@
 traversability_analysis:
   ros__parameters:
     pointCloudTopic: "lio_sam/mapping/map_global"
+    pose_topic: "/pose"
     costMapTopic: "map"
 
     map_frame_id: "map"
