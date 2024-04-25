@@ -155,11 +155,6 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
       {
         grid_map::Index idx(i,j);
         NonGroundGrid tmp;
-        if (i==2 && j==5)
-        {
-          RCLCPP_INFO(get_logger(), "The number is %ld",C_N_.size());
-        }
-        
         RNG = C_N_.size();
         tmp.index = idx;
         C_N_.push_back(tmp);

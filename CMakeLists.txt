@@ -6,7 +6,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 
-
 find_package(ament_cmake REQUIRED)
 find_package(grid_map_core REQUIRED)
 find_package(grid_map_ros REQUIRED)
@@ -42,7 +41,9 @@ set(DEPENDENCIES
 include_directories(
   include
 )
-
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
 
 
 ##############
@@ -60,7 +61,7 @@ include_directories(
 add_executable(${PROJECT_NAME}
   src/traversability_analysis_node.cpp src/traversabilityAnalysis.cpp
 )
-
+target_link_libraries(${PROJECT_NAME} ${PCL_LIBRARIES})
 ament_target_dependencies(${PROJECT_NAME}
   ${DEPENDENCIES}
 )
