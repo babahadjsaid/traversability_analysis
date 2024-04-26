@@ -163,7 +163,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
       
     }
     
-  }
+  } 
   
   const auto EndSegmentation = std::chrono::system_clock::now();
   //                                                      End Ground Segmentation.
