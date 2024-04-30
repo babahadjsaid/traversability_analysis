@@ -11,3 +11,12 @@ traversability_analysis:
     T_high: 0.2
     T_low: -0.2
     max_height: 2.0
+    Treshold: 9.0
+    mean_grass: 24.8704
+    variance_grass: 20.9897
+    T_prob: 1.0e-7
+    num_grids_min: 9
+
+    T_ratio: 1.7
+    T_l: 1.7
+    T_s: 1.7

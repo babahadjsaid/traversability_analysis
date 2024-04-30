@@ -1,4 +1,4 @@
-
+#define NOUTILITY
 #include "traversability_analysis/traversabilityAnalysis.hpp"
 
 
