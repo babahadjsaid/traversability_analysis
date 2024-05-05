@@ -290,7 +290,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   double durationOfProjectionMS = 1000 * durationOfProjection.count();
   double durationOfSegmentationMS = 1000 * durationOfSegmentation.count();
   double durationOfClusteringMS = 1000 * durationOfClustering.count();
-  SaveData(Clusters_);
+  // SaveData(Clusters_);
   RCLCPP_INFO(get_logger(), "Done processing number of non ground grid found is %ld, Projection Step took %f ms, segmentation Step Took %f ms, clustering (Num of clusters %ld) Step Took %f ms.",C_N_.size(),durationOfProjectionMS,durationOfSegmentationMS,Clusters_.size(),durationOfClusteringMS);
   C_N_.clear();
   Clusters_.clear();
