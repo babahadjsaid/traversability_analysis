@@ -323,7 +323,7 @@ bool TraversabilityAnalysis::CalculateRoughness(Cluster cluster){
   Eigen::Matrix3f S;
     S << a_1, a_2, a_3,
          a_2, a_4, a_5,
-         a_3, a_5, a_6;
+         a_3, a_5, a_6; 
   
   Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigensolver(S);
   if (eigensolver.info() != Eigen::Success) return 1;
