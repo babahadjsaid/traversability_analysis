@@ -8,6 +8,9 @@
 #include <vector>
 #include <array>
 #include <random>
+#include <filesystem>
+
+
 
 // ROS
 #include <rclcpp/rclcpp.hpp>
@@ -41,7 +44,8 @@ class ParamServer : public rclcpp::Node
 public:
     std::string PC_TOPIC,CM_TOPIC,MAP_FRAME;
     float RADIUS, CELL_RESOLUTION,T_DIFF,T_HIGH,T_LOW,
-    MAX_HEIGHT, MEAN_GRASS, VARIANCE_GRASS, T_PROB, UB, LB, T_RATIO, T_L, T_S;
+    MAX_HEIGHT, MEAN_GRASS, VARIANCE_GRASS, T_PROB, UB,
+    LB, T_RATIO, T_L, T_S, T_NEG, T_POS, T_SEG, T_INLINERS, T_ITERATIONS, MAXANGLE;
     int NUM_GRIDS_MIN;
     ParamServer(std::string node_name, const rclcpp::NodeOptions & options) : Node(node_name, options)
     {
@@ -97,6 +101,26 @@ public:
         
         declare_parameter("T_s", 1.7);
         get_parameter("T_s", T_S);
+
+        declare_parameter("T_neg", -0.2);
+        get_parameter("T_neg", T_NEG);
+
+        declare_parameter("T_pos", 0.2);
+        get_parameter("T_pos", T_POS);
+        
+        declare_parameter("T_seg", 0.1);
+        get_parameter("T_seg", T_SEG);
+
+        declare_parameter("T_inliners", 0.5);
+        get_parameter("T_inliners", T_INLINERS);
+
+        declare_parameter("T_Iterations", 1.1);
+        get_parameter("T_Iterations", T_ITERATIONS);
+        
+        declare_parameter("Max_traversable_angle", 60.0);
+        get_parameter("Max_traversable_angle", MAXANGLE);
+        MAXANGLE *= (M_PI/180.0);
+
 
         usleep(100);
     }

@@ -20,3 +20,10 @@ traversability_analysis:
     T_ratio: 1.7
     T_l: 1.7
     T_s: 1.7
+
+    T_neg: -0.2
+    T_pos: 0.2
+    T_seg: 0.1
+    T_inliners: 0.6
+    T_Iterations: 1.2
+    Max_traversable_angle: 65.0

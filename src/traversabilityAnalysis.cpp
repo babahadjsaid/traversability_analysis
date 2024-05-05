@@ -1,13 +1,13 @@
 
 #include "traversability_analysis/traversabilityAnalysis.hpp"
 
-
 namespace traversability_analysis{
 
 TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclcpp::NodeOptions & options)
 : ParamServer(node_name, options),
-elevationMap_({MAXHEIGHTLAYER,MINHEIGHTLAYER,MEANHEIGHTLAYER,SEGMENTATIONLAYER,REFRENCENONGRIDLAYER,COLORLAYER,GRIDSPOINTCLOUD}),
-kernel_(3,3)
+elevationMap_({MAXHEIGHTLAYER,MINHEIGHTLAYER,MEANHEIGHTLAYER,SEGMENTATIONLAYER,REFRENCENONGRIDLAYER,COLORLAYER,GRIDSPOINTCLOUD,CATIGORISATION}),
+kernel_(3,3),
+generator_(randomDevice_())
 {
   pointCloudSub_ = create_subscription<sensor_msgs::msg::PointCloud2>(PC_TOPIC, 1,std::bind(&TraversabilityAnalysis::PointCloudHandler, this, std::placeholders::_1));
   costMapPub_ = create_publisher<grid_map_msgs::msg::GridMap>(CM_TOPIC, 1); //nav2_msgs::msg::Costmap
@@ -18,8 +18,8 @@ kernel_(3,3)
   RCLCPP_INFO(get_logger(),"Hello:%f",side_length);
   elevationMap_.setGeometry(grid_map::Length(side_length,side_length),CELL_RESOLUTION,grid_map::Position(0,0));
   size_ = elevationMap_.getSize();
-  kernel_ << -1, -1, -1, -1, 8, -1, -1, -1, -1;
-
+  
+  
 
 }
 
@@ -34,13 +34,15 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   auto& RTGPCLayer = elevationMap_[GRIDSPOINTCLOUD];
   auto& RNGLayer = elevationMap_[REFRENCENONGRIDLAYER];
   auto& segmentLayer = elevationMap_[SEGMENTATIONLAYER];
+  auto& catigorisationLayer = elevationMap_[CATIGORISATION];
   mean_heightLayer.setZero();
   max_heightLayer.setZero();
   min_heightLayer.setConstant(MAX_HEIGHT);
   RTGPCLayer.setConstant(-1);
   RNGLayer.setConstant(-1);
+  catigorisationLayer.setZero();
 
-  //                                                      Start Map Projection.
+  //                                                                                            Start Map Projection.
   #pragma omp parallel for num_threads(5)
   for (unsigned int i = 0; i < pointCloud->size(); ++i)
   {
@@ -89,8 +91,8 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   }
   // RCLCPP_INFO(get_logger(), "pdf=%f, minimum=%f",mean_pdf/count,min_pdf);
   const auto EndProjection = std::chrono::system_clock::now();
-  //                                                      End Map Projection.
-  //                                                      Start Ground Segmentation.
+  //                                                                                            End Map Projection.
+  //                                                                                            Start Ground Segmentation.
   const std::chrono::duration<double> durations  = std::chrono::system_clock::now() - methodStartTime;
   //RCLCPP_INFO(get_logger(), "dDone in  %f ms.", 1000* durations.count());
   
@@ -107,6 +109,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
       float& mean_height   = mean_heightLayer(i,j);
       float& RNG   = RNGLayer(i,j);
       float& RTGPC   = RTGPCLayer(i,j);
+      float& cat   = catigorisationLayer(i,j);
 
       if (min_height==MAX_HEIGHT) // if the cell was not visited.
       {
@@ -120,7 +123,13 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
       segmentation = ((max_height - min_height) >= T_DIFF || max_height >= T_HIGH || min_height <= T_LOW);
       if (!(i>0 && i < mean_heightLayer.rows()-1 && j>0 && j < mean_heightLayer.cols()-1))
           goto AddToNonGrid;
-      // continue;
+      kernel_ << -1, -2, -1, 0, 0, 0, 1, 2, 1;// dx
+      cat = pow((mean_heightLayer.block(i-1,j-1,3,3).array() * kernel_.array()).sum(),2);
+      kernel_ << 1, 0, -1, 2, 0, -2, 1, 0, -1;// dy
+      cat += pow((mean_heightLayer.block(i-1,j-1,3,3).array() * kernel_.array()).sum(),2);
+      cat = sqrt(cat);
+      cat = 0.5-(0.5 / exp(cat));
+      
       segs = segmentLayer.block(i-1,j-1,3,3).array();
       
       for (int k = 0; k < 3; ++k) {
@@ -140,16 +149,6 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
             
           }
       }
-      if (allZeros && !segmentation)
-      // #pragma omp critical
-      {
-        segmentation = (mean_heightLayer.block(i-1,j-1,3,3).array() * kernel_.array()).sum() >= T_DIFF ;
-        if (segmentation)
-        
-        {
-          mean_height = T_HIGH;
-        }
-        }
       if(allOnes && segmentation==2)
             segmentation = allOnes;  
       if (allZeros && segmentation == 2)
@@ -170,10 +169,9 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   }
   
   const auto EndSegmentation = std::chrono::system_clock::now();
-  //                                                      End Ground Segmentation.
-  //                                                      Start Grids clustering.
-  std::random_device rd;
-  std::mt19937 gen(rd());
+  //                                                                                            End Ground Segmentation.
+  //                                                                                            Start Grids clustering.
+  
   
   // Define the distribution for random numbers between 0 and 255
   std::uniform_int_distribution<int> distribution(0, 255);
@@ -184,7 +182,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     if (C_N_[i].clustered) continue;
     Cluster new_cluster;
     
-    FloodFill(C_N_[i].index,&new_cluster, distribution(gen));
+    FloodFill(C_N_[i].index,&new_cluster, distribution(generator_));
     if (new_cluster.grids.size()<NUM_GRIDS_MIN)
     {
       for (auto &&grid : new_cluster.grids)
@@ -199,6 +197,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
       continue;
     }
     new_cluster.mean_height /= new_cluster.grids.size();
+    new_cluster.Point_mass /= (float) new_cluster.grids.size();
     float H_d = new_cluster.max_height - new_cluster.min_height;
     if(new_cluster.mean_height>=0){
       new_cluster.H_f = std::max(H_d,new_cluster.mean_height);
@@ -207,16 +206,77 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
       new_cluster.H_f = std::min(-H_d,new_cluster.mean_height);
     }
     
+    if (T_NEG < new_cluster.H_f && new_cluster.H_f < T_POS)
+    {
+      new_cluster.Type = OBSTACLES;
+      goto ADD_CLUSTER;
+    }
+    
+    if (new_cluster.H_f >= T_POS)
+    {
+      if (CalculateRoughness(new_cluster))
+      {
+        new_cluster.Type = OBSTACLES;
+        goto ADD_CLUSTER;
+      }
+      new_cluster.Type = SLOPE ;
+    } else { // T_NEG >= new_cluster.H_f 
+      if (CalculateRoughness(new_cluster))
+      {
+        new_cluster.Type = POTHOLE;
+        goto ADD_CLUSTER;
+      }
+      new_cluster.Type = NEGATIVESLOPE;
+      }
+      
+    EstimateAngle(new_cluster);
+    ADD_CLUSTER:
     Clusters_.push_back(new_cluster);
     
   }
   
   // gridsPointClouds_.clear();
   const auto EndClustering = std::chrono::system_clock::now();
-  //                                                      End Grids clustering.
-  //                                                      Start Feature Calculation.
+  //                                                                                            End Grids clustering.
+  //                                                                                            Start Cost Calculation.
+  
+  for (auto &&cluster : Clusters_)
+  {
+    float cost;
+    switch (checkCategory(cluster.Type))
+    {
+    case pOTHOLE: 
+    case oBSTACLES:
+      cost = 1.0;
+      break;
+    case sLOPE:      
+    case nEGATIVESLOPE:
+      if (abs(cluster.angle)>= MAXANGLE)
+      {
+        cost = 1.0;
+        break;
+      }
+      cost = abs(cluster.angle) / (2*MAXANGLE);
+      break;
+    
+    default:
+      break;
+    }
 
-
+    for (auto &&grid : cluster.grids)
+    {
+      auto& cat = catigorisationLayer(grid->index(0),grid->index(1));
+      if (cost == 1)
+      {
+        cat = 1.0;
+        continue;
+      }
+      cat += cost;
+      
+    }
+    
+  }
+  
 
 
   std::unique_ptr<grid_map_msgs::msg::GridMap> message;
@@ -243,6 +303,14 @@ double TraversabilityAnalysis::NormalPDF(double x, double mean, double variance)
     return (1.0 / sqrt(2.0 * M_PI * variance)) * exp(-0.5 * pow((x - mean) / sqrt(variance), 2));
 }
 
+ObjectsCategories TraversabilityAnalysis::checkCategory(std::string &categoryName){
+  if (categoryName == OBSTACLES) return oBSTACLES;
+  if (categoryName == SLOPE) return sLOPE ;
+  if (categoryName == NEGATIVESLOPE) return nEGATIVESLOPE;
+  if (categoryName == POTHOLE) return pOTHOLE;
+  return gROUND;
+}
+
 
 void TraversabilityAnalysis::FloodFill(grid_map::Index index,Cluster *cluster,int color)
 {
@@ -267,6 +335,9 @@ void TraversabilityAnalysis::FloodFill(grid_map::Index index,Cluster *cluster,in
     grid->clustered = true;
     cluster->grids.push_back(grid);
     cluster->mean_height += mean_height_Grid;
+    grid_map::Position pos;
+    elevationMap_.getPosition(grid->index,pos);
+    cluster->Point_mass += pos;
     cluster->pc += gridsPointClouds_[RTGPC];
     if (cluster->grids.size()==1)
     {
@@ -326,32 +397,32 @@ bool TraversabilityAnalysis::CalculateRoughness(Cluster cluster){
          a_3, a_5, a_6; 
   
   Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigensolver(S);
-  if (eigensolver.info() != Eigen::Success) return 1;
+  if (eigensolver.info() != Eigen::Success) return 0;
 
   Eigen::Vector3f L = eigensolver.eigenvalues();
   std::sort(L.data(), L.data() + L.size());
+  cluster.Roughness = 0;
   if(L[0]!=0 && L[1]/L[0]>=T_RATIO && L[1] >= T_L && L[0] <= T_S ) return false;
+  cluster.Roughness = 1;
   return true; 
 
 }
 
-float TraversabilityAnalysis::EstimateAngle(Cluster cluster){
+void TraversabilityAnalysis::EstimateAngle(Cluster cluster){
   // Constants and thresholds
     const int CloudSize = cluster.pc.points.size();
-    const int MaxIterations = 1.2*CloudSize;
-    const float TSegment = 0.1;
-    const float TInlier = 0.5;
+    std::uniform_int_distribution<int> distribution(0, CloudSize);
 
     // Initialize variables
     int NumofInliers = 0;
     std::vector<int> BestInliers;
 
     // RANSAC for plane segmentation
-    for (int i = 0; i < MaxIterations; ++i) {
+    for (int i = 0; i < T_ITERATIONS*CloudSize; ++i) {
         // Select three random points
-        int n1 = rand() % CloudSize;
-        int n2 = rand() % CloudSize;
-        int n3 = rand() % CloudSize;
+        int n1 = distribution(generator_);
+        int n2 = distribution(generator_);
+        int n3 = distribution(generator_);
         PointType p1 = cluster.pc.points[n1], p2 = cluster.pc.points[n2], p3 = cluster.pc.points[n3];
 
         // Compute plane coefficients
@@ -364,7 +435,7 @@ float TraversabilityAnalysis::EstimateAngle(Cluster cluster){
         std::vector<int> inliers;
         for (int j = 0; j < CloudSize; ++j) {
             float distance = PointToPlaneDistance(cluster.pc.points[j], Ai, Bi, Ci, Di);
-            if (distance <= TSegment) {
+            if (distance <= T_SEG) {
                 inliers.push_back(j);
             }
         }
@@ -376,7 +447,7 @@ float TraversabilityAnalysis::EstimateAngle(Cluster cluster){
         }
 
         // Check termination condition
-        if (NumofInliers / (CloudSize+0.0) > TInlier) {
+        if (NumofInliers / (CloudSize+0.0) > T_INLINERS) {
             break;
         }
     }
@@ -409,7 +480,7 @@ float TraversabilityAnalysis::EstimateAngle(Cluster cluster){
 
     // Calculate slope angle
     float as = acos(1 / sqrt(pow(VecC(0), 2) + pow(VecC(1), 2) + 1));
-    return as;
+    cluster.angle = as;
   
 }
 
@@ -420,17 +491,30 @@ void TraversabilityAnalysis::savePointCloud(const pcl::PointCloud<PointType> *cl
 
 void TraversabilityAnalysis::SaveData(std::vector<Cluster>  &clusters){
     std::string csvFileName = "data/data.csv";
-    std::ofstream file(csvFileName);
+    auto existt = std::filesystem::exists(csvFileName);
+    
+    std::ofstream file(csvFileName, std::ios::app);
+
     if (file.is_open()) {
-      file << "Path, R, angle, H_f" << std::endl;
+      if (!existt)
+      {
+      file << "Path, Type, R, angle, H_f" << std::endl;
+      }
+      
       for (auto &&cluster : clusters)
       {
+        if (cluster.pc.size()<350)
+        {
+          continue;
+        }
+        
         std::stringstream ss;
         auto now = std::chrono::system_clock::now().time_since_epoch();
         ss << "data/pcd/pointcloud_"<<now.count()<<".pcd";
         std::string pcdFileName = ss.str();
+        // RCLCPP_INFO(get_logger(),pcdFileName.c_str());
         savePointCloud(&cluster.pc, pcdFileName);
-        file << pcdFileName<<", "<<cluster.Roughness<<", "<<cluster.angle<<", "<<cluster.H_f<<std::endl;
+        file << pcdFileName<<", "<<cluster.Type<<", "<<cluster.Roughness<<", "<<cluster.angle<<", "<<cluster.H_f<<std::endl;
       }
       }else {
         std::cerr << "Unable to open file: " << csvFileName << std::endl;

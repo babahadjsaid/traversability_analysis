@@ -1,0 +1,110 @@
+@startuml
+
+
+
+
+
+/' Objects '/
+
+class ParamServer {
+	+ParamServer(std::string node_name, const rclcpp::NodeOptions& options)
+	+CELL_RESOLUTION : float
+	+LB : float
+	+MAX_HEIGHT : float
+	+MEAN_GRASS : float
+	+RADIUS : float
+	+T_DIFF : float
+	+T_HIGH : float
+	+T_L : float
+	+T_LOW : float
+	+T_PROB : float
+	+T_RATIO : float
+	+T_S : float
+	+UB : float
+	+VARIANCE_GRASS : float
+	+NUM_GRIDS_MIN : int
+	+CM_TOPIC : std::string
+	+MAP_FRAME : std::string
+	+PC_TOPIC : std::string
+}
+
+
+namespace traversability_analysis {
+	class TraversabilityAnalysis {
+		+TraversabilityAnalysis(std::string node_name, const rclcpp::NodeOptions& options)
+		-kernel_ : Eigen::MatrixXf
+		+CalculateRoughness(Cluster cluster) : bool
+		+NormalPDF(double x, double mean, double variance) : double
+		+EstimateAngle(Cluster cluster) : float
+		+avgTime : float
+		-elevationMap_ : grid_map::GridMap
+		-size_ : grid_map::Size
+		+numFrames : long int
+		-costMapPub_ : rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr
+		-pointCloudSub_ : rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr
+		-mapMtx_ : std::mutex
+		-Clusters_ : std::vector<Cluster>
+		-C_N_ : std::vector<NonGroundGrid>
+		-gridsPointClouds_ : std::vector<pcl::PointCloud<PointType>>
+		+FloodFill(grid_map::Index index, Cluster* cluster, int color) : void
+		+PointCloudHandler(sensor_msgs::msg::PointCloud2::SharedPtr pointCloudMsg) : void
+		+SaveData(std::vector<Cluster>& clusters) : void
+		+savePointCloud(const pcl::PointCloud<PointType>* cloud, const std::string& filename) : void
+	}
+
+	class Cluster {
+		+Roughness : bool
+		+0.0 : float
+		+H_f : float
+		+angle : float
+		+max_height : float
+		+mean_height : float
+		+min_height : float
+		+color : int
+		+pc : pcl::PointCloud<PointType>
+		+grids : std::vector<NonGroundGrid*>
+	}
+
+	class NonGroundGrid {
+		+cluster : Cluster*
+		+clustered : bool
+		+index : grid_map::Index
+		+color : int
+	}
+}
+
+
+
+
+
+/' Inheritance relationships '/
+
+.ParamServer <|-- traversability_analysis.TraversabilityAnalysis
+
+
+
+
+
+/' Aggregation relationships '/
+
+traversability_analysis.Cluster o-- traversability_analysis.NonGroundGrid
+
+
+traversability_analysis.NonGroundGrid o-- traversability_analysis.Cluster
+
+
+traversability_analysis.TraversabilityAnalysis *-- traversability_analysis.Cluster
+
+
+traversability_analysis.TraversabilityAnalysis *-- traversability_analysis.NonGroundGrid
+
+
+
+
+
+
+/' Nested objects '/
+
+
+
+@enduml

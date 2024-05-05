@@ -7,6 +7,15 @@
 #define REFRENCENONGRIDLAYER "RNG"
 #define COLORLAYER "Color"
 #define GRIDSPOINTCLOUD "gridsPointClouds"
+#define CATIGORISATION "2D Convolution"
+
+
+
+#define GROUND "ground"
+#define OBSTACLES "Obstacle"
+#define POTHOLE "Pothole"
+#define SLOPE  "Slope"
+#define NEGATIVESLOPE "Negative Slope"
 
 // utility
 
@@ -21,9 +30,19 @@ struct NonGroundGrid;
     float min_height,max_height,mean_height=0.0;
     int color;
     float H_f,angle;
-    bool Roughness;
+    bool Roughness = -1;
+    std::string Type;
+    grid_map::Position Point_mass;
 
 };
+enum ObjectsCategories {
+    gROUND,
+    oBSTACLES,
+    pOTHOLE,
+    sLOPE,
+    nEGATIVESLOPE
+};
+
 struct NonGroundGrid {
     grid_map::Index index;
     Cluster* cluster;
@@ -45,9 +64,10 @@ class TraversabilityAnalysis : public ParamServer{
     double NormalPDF(double x, double mean, double variance);
     void FloodFill(grid_map::Index index,Cluster *cluster, int color);
     bool CalculateRoughness(Cluster cluster);
-    float EstimateAngle(Cluster cluster);
+    void EstimateAngle(Cluster cluster);
     void savePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename);
     void SaveData(std::vector<Cluster>  &clusters);
+    ObjectsCategories checkCategory(std::string &categoryName);
 
  private:
    //Sync
@@ -63,6 +83,8 @@ class TraversabilityAnalysis : public ParamServer{
    std::vector<NonGroundGrid> C_N_;
    std::vector<Cluster> Clusters_;
    std::vector<pcl::PointCloud<PointType>> gridsPointClouds_;
+   std::random_device randomDevice_;
+   std::mt19937 generator_;
    
 
 };
