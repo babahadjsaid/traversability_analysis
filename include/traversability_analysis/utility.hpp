@@ -19,6 +19,9 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/common/centroid.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/common/common.h>
 
 // Grid Map
 #include <grid_map_ros/grid_map_ros.hpp>
@@ -32,6 +35,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <Eigen/Eigenvalues>
+#include <Eigen/Dense>
 
 // Boost
 #include <boost/math/special_functions.hpp>

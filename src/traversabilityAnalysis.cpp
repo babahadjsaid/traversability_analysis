@@ -1,6 +1,10 @@
 
 #include "traversability_analysis/traversabilityAnalysis.hpp"
 
+
+
+  
+
 namespace traversability_analysis{
 
 TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclcpp::NodeOptions & options)
@@ -199,40 +203,38 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     new_cluster.mean_height /= new_cluster.grids.size();
     new_cluster.Point_mass /= (float) new_cluster.grids.size();
     float H_d = new_cluster.max_height - new_cluster.min_height;
-    if(new_cluster.mean_height>=0){
-      new_cluster.H_f = std::max(H_d,new_cluster.mean_height);
-    }else
-    {
-      new_cluster.H_f = std::min(-H_d,new_cluster.mean_height);
-    }
-    
-    if (T_NEG < new_cluster.H_f && new_cluster.H_f < T_POS)
-    {
-      new_cluster.Type = OBSTACLES;
-      goto ADD_CLUSTER;
-    }
-    
-    if (new_cluster.H_f >= T_POS)
-    {
-      if (CalculateRoughness(new_cluster))
-      {
-        new_cluster.Type = OBSTACLES;
-        goto ADD_CLUSTER;
-      }
-      new_cluster.Type = SLOPE ;
-    } else { // T_NEG >= new_cluster.H_f 
-      if (CalculateRoughness(new_cluster))
-      {
-        new_cluster.Type = POTHOLE;
-        goto ADD_CLUSTER;
-      }
-      new_cluster.Type = NEGATIVESLOPE;
-      }
-      
-    EstimateAngle(new_cluster);
-    ADD_CLUSTER:
     Clusters_.push_back(new_cluster);
     
+    if(Clusters_.back().mean_height>=0){
+      Clusters_.back().H_f = std::max(H_d,Clusters_.back().mean_height);
+    }else
+    {
+      Clusters_.back().H_f = std::min(-H_d,Clusters_.back().mean_height);
+    }
+    
+    if (T_NEG < Clusters_.back().H_f && Clusters_.back().H_f < T_POS)
+    {
+      Clusters_.back().Type = OBSTACLES;
+      continue;
+    }
+    
+    if (Clusters_.back().H_f >= T_POS)
+    {
+      if (CalculateRoughness(Clusters_.back()))
+      {
+        Clusters_.back().Type = OBSTACLES;
+        continue;
+      }
+      Clusters_.back().Type = SLOPE ;
+    } else { // T_NEG >= Clusters_.back().H_f 
+      if (CalculateRoughness(Clusters_.back()))
+      {
+        Clusters_.back().Type = POTHOLE;
+        continue;
+      }
+      Clusters_.back().Type = NEGATIVESLOPE;
+      }
+    EstimateAngle(Clusters_.back());
   }
   
   // gridsPointClouds_.clear();
@@ -277,8 +279,6 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     
   }
   
-
-
   std::unique_ptr<grid_map_msgs::msg::GridMap> message;
   message = grid_map::GridMapRosConverter::toMessage(elevationMap_);
   costMapPub_->publish(std::move(message));
@@ -290,8 +290,8 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   double durationOfProjectionMS = 1000 * durationOfProjection.count();
   double durationOfSegmentationMS = 1000 * durationOfSegmentation.count();
   double durationOfClusteringMS = 1000 * durationOfClustering.count();
-  // SaveData(Clusters_);
-  RCLCPP_INFO(get_logger(), "Done processing number of non ground grid found is %ld, Projection Step took %f ms, segmentation Step Took %f ms, clustering (Num of clusters %ld) Step Took %f ms.",C_N_.size(),durationOfProjectionMS,durationOfSegmentationMS,Clusters_.size(),durationOfClusteringMS);
+  SaveData();
+  // RCLCPP_INFO(get_logger(), "Done processing number of non ground grid found is %ld, Projection Step took %f ms, segmentation Step Took %f ms, clustering (Num of clusters %ld) Step Took %f ms.",C_N_.size(),durationOfProjectionMS,durationOfSegmentationMS,Clusters_.size(),durationOfClusteringMS);
   C_N_.clear();
   Clusters_.clear();
 }
@@ -374,16 +374,17 @@ void TraversabilityAnalysis::FloodFill(grid_map::Index index,Cluster *cluster,in
 
 }
 
-bool TraversabilityAnalysis::CalculateRoughness(Cluster cluster){
-  float x_m, y_m, z_m;
+bool TraversabilityAnalysis::CalculateRoughness(Cluster &cluster){
+  long int n = cluster.pc.points.size();
+  float x_m = 0, y_m = 0, z_m = 0;
   for (auto &&point : cluster.pc.points)
   {
     x_m += point.x; y_m += point.y; z_m += point.z;
   }
-  x_m /= cluster.pc.points.size();
-  y_m /= cluster.pc.points.size();
-  z_m /= cluster.pc.points.size();
-  float a_1, a_2, a_3, a_4, a_5, a_6;
+  x_m /= n;
+  y_m /= n;
+  z_m /= n;
+  float a_1=0, a_2=0, a_3=0, a_4=0, a_5=0, a_6=0;
   for (auto &&point : cluster.pc.points)
   {
     float t1 = point.x - x_m, t2 = point.y - y_m, t3 = point.z - z_m;
@@ -391,25 +392,29 @@ bool TraversabilityAnalysis::CalculateRoughness(Cluster cluster){
     a_4 += t2 *t2;a_5 += t2 *t3;a_6 += t3 *t3;
 
   }
-  Eigen::Matrix3f S;
-    S << a_1, a_2, a_3,
-         a_2, a_4, a_5,
-         a_3, a_5, a_6; 
   
-  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigensolver(S);
-  if (eigensolver.info() != Eigen::Success) return 0;
-
-  Eigen::Vector3f L = eigensolver.eigenvalues();
-  std::sort(L.data(), L.data() + L.size());
-  cluster.Roughness = 0;
-  if(L[0]!=0 && L[1]/L[0]>=T_RATIO && L[1] >= T_L && L[0] <= T_S ) return false;
-  cluster.Roughness = 1;
-  return true; 
+  Eigen::Matrix3f S;
+  S << a_1, a_2, a_3,
+      a_2, a_4, a_5,
+      a_3, a_5, a_6; 
+  
+  S/= (n-1);
+  Eigen::EigenSolver<Eigen::Matrix3f> solver(S);
+  Eigen::Vector3f eigenvalues = solver.eigenvalues().real();
+  std::sort(eigenvalues.data(), eigenvalues.data() + eigenvalues.size());
+  
+  bool condition = ((eigenvalues[0]!=0) && (eigenvalues[1] / eigenvalues[0] >= T_RATIO));
+  cluster.ss_ = new std::stringstream("");
+  *(cluster.ss_)<< eigenvalues[1]/eigenvalues[0]<<","<< eigenvalues[0] <<","<<eigenvalues[1] <<","<<eigenvalues[2];
+  
+  cluster.Roughness = !condition;
+  return cluster.Roughness;
 
 }
 
-void TraversabilityAnalysis::EstimateAngle(Cluster cluster){
-  // Constants and thresholds
+void TraversabilityAnalysis::EstimateAngle(Cluster &cluster){
+    const auto Start = std::chrono::system_clock::now();
+    // Constants and thresholds
     const int CloudSize = cluster.pc.points.size();
     std::uniform_int_distribution<int> distribution(0, CloudSize);
 
@@ -433,15 +438,20 @@ void TraversabilityAnalysis::EstimateAngle(Cluster cluster){
 
         // Check inliers
         std::vector<int> inliers;
+        #pragma omp parallel for num_threads(5)
         for (int j = 0; j < CloudSize; ++j) {
             float distance = PointToPlaneDistance(cluster.pc.points[j], Ai, Bi, Ci, Di);
-            if (distance <= T_SEG) {
+            if (distance <= T_SEG) 
+            #pragma omp critical
+            {
                 inliers.push_back(j);
             }
         }
 
         // Update best plane parameters
-        if (inliers.size() >= NumofInliers) {
+        if (inliers.size() >= NumofInliers) 
+        
+        {
             NumofInliers = inliers.size();
             BestInliers = inliers;
         }
@@ -451,6 +461,7 @@ void TraversabilityAnalysis::EstimateAngle(Cluster cluster){
             break;
         }
     }
+    const auto RansacEnd = std::chrono::system_clock::now();
 
     // Least squares method for normal vector estimation
     int nt = NumofInliers;
@@ -469,6 +480,7 @@ void TraversabilityAnalysis::EstimateAngle(Cluster cluster){
         b2 += z * y;
         b3 += z;
     }
+    const auto leastEnd = std::chrono::system_clock::now();
 
     // Singular value decomposition
     Eigen::Matrix3f MatA;
@@ -481,7 +493,15 @@ void TraversabilityAnalysis::EstimateAngle(Cluster cluster){
     // Calculate slope angle
     float as = acos(1 / sqrt(pow(VecC(0), 2) + pow(VecC(1), 2) + 1));
     cluster.angle = as;
-  
+    
+    cluster.vec = VecC;
+    cluster.p1 = cluster.pc.points[BestInliers[0]];
+    // continue the inclusion of vector and point to be displayed in open 3d
+    const std::chrono::duration<double> duration = std::chrono::system_clock::now() - Start;
+    const std::chrono::duration<double> durationR = RansacEnd - Start;
+    const std::chrono::duration<double> durationL = leastEnd - RansacEnd;
+    float dd = 1000 * duration.count();
+    if (dd >5.0) RCLCPP_INFO(get_logger(), "Done estimating angle duration: %fms, ransac: %fms, least:%fms", dd, 1000 * durationR.count(),1000 * durationL.count());
 }
 
 void TraversabilityAnalysis::savePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename) {
@@ -489,7 +509,7 @@ void TraversabilityAnalysis::savePointCloud(const pcl::PointCloud<PointType> *cl
     writer.writeBinaryCompressed(filename, *cloud);
 }
 
-void TraversabilityAnalysis::SaveData(std::vector<Cluster>  &clusters){
+void TraversabilityAnalysis::SaveData(){
     std::string csvFileName = "data/data.csv";
     auto existt = std::filesystem::exists(csvFileName);
     
@@ -498,12 +518,12 @@ void TraversabilityAnalysis::SaveData(std::vector<Cluster>  &clusters){
     if (file.is_open()) {
       if (!existt)
       {
-      file << "Path, Type, R, angle, H_f" << std::endl;
+      file << "Path,Type,R,angle,v_x,v_y,v_z,p_x,p_y,p_z,r,1,2,3" << std::endl;
       }
       
-      for (auto &&cluster : clusters)
+      for (auto &cluster : Clusters_)
       {
-        if (cluster.pc.size()<350)
+        if (cluster.pc.size()<350 || cluster.Roughness )
         {
           continue;
         }
@@ -512,10 +532,12 @@ void TraversabilityAnalysis::SaveData(std::vector<Cluster>  &clusters){
         auto now = std::chrono::system_clock::now().time_since_epoch();
         ss << "data/pcd/pointcloud_"<<now.count()<<".pcd";
         std::string pcdFileName = ss.str();
-        // RCLCPP_INFO(get_logger(),pcdFileName.c_str());
+        
         savePointCloud(&cluster.pc, pcdFileName);
-        file << pcdFileName<<", "<<cluster.Type<<", "<<cluster.Roughness<<", "<<cluster.angle<<", "<<cluster.H_f<<std::endl;
-      }
+        file << pcdFileName<<","<<cluster.Type<<","<<cluster.Roughness<<","<<cluster.angle * (180.0/M_PI)<<","<<cluster.vec[0]
+        <<","<<cluster.vec[1]<<","<<cluster.vec[2]<<","<<cluster.p1.x<<","<<cluster.p1.y<<","<<cluster.p1.z<<","<<cluster.ss_->str()<<std::endl;
+        delete cluster.ss_;
+      }// Customize T_s and T_l
       }else {
         std::cerr << "Unable to open file: " << csvFileName << std::endl;
     }
@@ -523,9 +545,48 @@ void TraversabilityAnalysis::SaveData(std::vector<Cluster>  &clusters){
     
 }
 
+float TraversabilityAnalysis::getZaxis(Eigen::Vector3f eigenvalues, Eigen::Matrix3f eigenvectors ){
 
+  int max_z_index = 0;
+  float max_z_component = eigenvectors.row(0)(2); 
+  for (int i = 1; i < 3; ++i) {
+      float z_component = eigenvectors.row(i)(2);
+      if (z_component > max_z_component) {
+          max_z_component = z_component;
+          max_z_index = i;
+      }
+  }
+  return eigenvalues(max_z_index);
+}
 
 
 
 }// End namespace 
 
+
+
+// Eigen::Vector4f centroid;
+//   Eigen::Matrix3f S;
+//   pcl::compute3DCentroid(cluster.pc, centroid);
+//   computeCovarianceMatrix (cluster.pc, centroid, S); 
+
+
+
+// Eigen::Matrix3f S;
+//   S << a_1, a_2, a_3,
+//       a_2, a_4, a_5,
+//       a_3, a_5, a_6; 
+//   S /= cluster.pc.points.size()-1;
+
+//   Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigensolver(S);
+//   if (eigensolver.info() != Eigen::Success) return 0;
+
+//   Eigen::Vector3f L = eigensolver.eigenvalues();
+//   float z = L[2];
+//   std::sort(L.data(), L.data() + L.size());
+//   cluster.Roughness = false;
+//   cluster.z = z;
+//   cluster.eig3 = L[2];
+//   if(L[0]!=0 && L[1]/L[0]>=T_RATIO  && L[2] > z ) return false;
+//   cluster.Roughness = true;
+//   return true;

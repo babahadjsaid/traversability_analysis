@@ -29,10 +29,13 @@ struct NonGroundGrid;
     pcl::PointCloud<PointType> pc;
     float min_height,max_height,mean_height=0.0;
     int color;
-    float H_f,angle;
-    bool Roughness = -1;
+    float H_f,angle=0;
+    bool Roughness = false;
     std::string Type;
     grid_map::Position Point_mass;
+    Eigen::Vector3f vec;
+    PointType p1;
+    std::stringstream *ss_,*sp_;
 
 };
 enum ObjectsCategories {
@@ -63,28 +66,30 @@ class TraversabilityAnalysis : public ParamServer{
     void PointCloudHandler(sensor_msgs::msg::PointCloud2::SharedPtr pointCloudMsg);
     double NormalPDF(double x, double mean, double variance);
     void FloodFill(grid_map::Index index,Cluster *cluster, int color);
-    bool CalculateRoughness(Cluster cluster);
-    void EstimateAngle(Cluster cluster);
+    bool CalculateRoughness(Cluster &cluster);
+    void EstimateAngle(Cluster &cluster);
     void savePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename);
-    void SaveData(std::vector<Cluster>  &clusters);
+    void SaveData();
     ObjectsCategories checkCategory(std::string &categoryName);
+    float getZaxis(Eigen::Vector3f eigenvalues, Eigen::Matrix3f eigenvectors );
 
  private:
-   //Sync
-   std::mutex mapMtx_;
+    //Sync
+    std::mutex mapMtx_;
 
-   //Map
-   grid_map::GridMap elevationMap_;
-   grid_map::Size size_;
-   //Topics 
-   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointCloudSub_;
-   rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr costMapPub_;
-   Eigen::MatrixXf kernel_;
-   std::vector<NonGroundGrid> C_N_;
-   std::vector<Cluster> Clusters_;
-   std::vector<pcl::PointCloud<PointType>> gridsPointClouds_;
-   std::random_device randomDevice_;
-   std::mt19937 generator_;
+    //Map
+    grid_map::GridMap elevationMap_;
+    grid_map::Size size_;
+    //Topics 
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointCloudSub_;
+    rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr costMapPub_;
+    Eigen::MatrixXf kernel_;
+    std::vector<NonGroundGrid> C_N_;
+    std::vector<Cluster> Clusters_;
+    std::vector<pcl::PointCloud<PointType>> gridsPointClouds_;
+    std::random_device randomDevice_;
+    std::mt19937 generator_;
+    
    
 
 };

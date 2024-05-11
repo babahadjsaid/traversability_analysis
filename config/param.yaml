@@ -17,13 +17,13 @@ traversability_analysis:
     T_prob: 1.0e-7
     num_grids_min: 9
 
-    T_ratio: 1.7
-    T_l: 1.7
-    T_s: 1.7
+    T_ratio: 70.0
+    T_l: 0.2
+    T_s: 4.0
 
     T_neg: -0.2
     T_pos: 0.2
-    T_seg: 0.1
-    T_inliners: 0.6
+    T_seg: 0.4
+    T_inliners: 0.85
     T_Iterations: 1.2
     Max_traversable_angle: 65.0
