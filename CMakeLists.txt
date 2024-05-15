@@ -20,6 +20,10 @@ find_package(pcl_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 find_package(OpenMP REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_eigen REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 set(DEPENDENCIES
   grid_map_core
@@ -34,6 +38,10 @@ set(DEPENDENCIES
   sensor_msgs
   geometry_msgs
   nav2_msgs
+  tf2 
+  tf2_ros 
+  tf2_eigen 
+  tf2_geometry_msgs
 )
 
 

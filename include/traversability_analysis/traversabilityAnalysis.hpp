@@ -56,26 +56,25 @@ struct NonGroundGrid {
 
 class TraversabilityAnalysis : public ParamServer{
  public:
-   long int numFrames=0;
-   float avgTime;
+   long int numFrames_=0;
+   float avgTime_;
     /*!
     * Constructor.
     */
     explicit TraversabilityAnalysis(std::string node_name, const rclcpp::NodeOptions & options);
 
     void PointCloudHandler(sensor_msgs::msg::PointCloud2::SharedPtr pointCloudMsg);
-    double NormalPDF(double x, double mean, double variance);
+    void OdometryHandler(nav_msgs::msg::Odometry::SharedPtr poseMsg);
     void FloodFill(grid_map::Index index,Cluster *cluster, int color);
     bool CalculateRoughness(Cluster &cluster);
     void EstimateAngle(Cluster &cluster);
     void savePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename);
     void SaveData();
     ObjectsCategories checkCategory(std::string &categoryName);
-    float getZaxis(Eigen::Vector3f eigenvalues, Eigen::Matrix3f eigenvectors );
 
  private:
     //Sync
-    std::mutex mapMtx_;
+    std::mutex mapMtx_,poseMtx_;
 
     //Map
     grid_map::GridMap elevationMap_;
@@ -83,12 +82,18 @@ class TraversabilityAnalysis : public ParamServer{
     //Topics 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointCloudSub_;
     rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr costMapPub_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr robotPoseSubscriber_;
+    
     Eigen::MatrixXf kernel_;
     std::vector<NonGroundGrid> C_N_;
     std::vector<Cluster> Clusters_;
     std::vector<pcl::PointCloud<PointType>> gridsPointClouds_;
     std::random_device randomDevice_;
     std::mt19937 generator_;
+    nav_msgs::msg::Odometry currentOdom_;
+    grid_map::Position3  currentPose_,previousPose_,displacement_;
+    geometry_msgs::msg::Twist currentTwist_;
+    bool receivedPose_, firstPose_;
     
    
 

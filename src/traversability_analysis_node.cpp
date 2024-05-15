@@ -16,12 +16,13 @@ int main(int argc, char** argv) {
 
     auto TA = std::make_shared<traversability_analysis::TraversabilityAnalysis>(std::string("traversability_analysis"),options);
     
+    
     exec.add_node(TA);
 
 
     exec.spin();
 
     rclcpp::shutdown();
-    std::cout<<"The algorithm took on average "<<(TA->avgTime/TA->numFrames)*1000<<" to treat each frame."<<std::endl;
+    std::cout<<"The algorithm took on average "<<(TA->avgTime_/TA->numFrames_)*1000<<" to treat each frame."<<std::endl;
     return 0;
 }

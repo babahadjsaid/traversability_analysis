@@ -90,7 +90,8 @@
 			"hash_set": "cpp",
 			"*.ipp": "cpp",
 			"*.inc": "cpp",
-			"filesystem": "cpp"
+			"filesystem": "cpp",
+			"eigenvalues": "cpp"
 		},
 		"cmake.sourceDirectory": "/media/baba/New Volume/internships/LS2N/intern/SourceCode/src/src/LIO-SAM",
 		"python.autoComplete.extraPaths": [

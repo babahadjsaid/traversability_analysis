@@ -14,6 +14,13 @@
 
 // ROS
 #include <rclcpp/rclcpp.hpp>
+#include <message_filters/cache.h>
+#include <message_filters/subscriber.h>
+//message types definition
+#include <nav_msgs/msg/odometry.hpp>
+#include <nav2_msgs/msg/costmap.hpp>
+#include <sensor_msgs/msg/point_cloud.hpp>
+#include <grid_map_msgs/msg/grid_map.hpp>
 
 //PCL
 #include <pcl/point_cloud.h>
@@ -26,10 +33,8 @@
 // Grid Map
 #include <grid_map_ros/grid_map_ros.hpp>
 
-//message types definition
-#include <nav2_msgs/msg/costmap.hpp>
-#include <sensor_msgs/msg/point_cloud.hpp>
-#include <grid_map_msgs/msg/grid_map.hpp>
+
+
 
 // Eigen
 #include <Eigen/Core>
@@ -41,12 +46,19 @@
 #include <boost/math/special_functions.hpp>
 // #include <boost/thread/recursive_mutex.hpp>
 
+
+
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
+
+
 typedef pcl::PointXYZI PointType;
 
 class ParamServer : public rclcpp::Node
 {
 public:
-    std::string PC_TOPIC,CM_TOPIC,MAP_FRAME;
+    std::string PC_TOPIC,CM_TOPIC,MAP_FRAME,POSE_TOPIC;
     float RADIUS, CELL_RESOLUTION,T_DIFF,T_HIGH,T_LOW,
     MAX_HEIGHT, MEAN_GRASS, VARIANCE_GRASS, T_PROB, UB,
     LB, T_RATIO, T_L, T_S, T_NEG, T_POS, T_SEG, T_INLINERS, T_ITERATIONS, MAXANGLE;
@@ -58,6 +70,9 @@ public:
 
         declare_parameter("costMapTopic", "map");
         get_parameter("costMapTopic", CM_TOPIC);
+
+        declare_parameter("pose_topic", "/pose");
+        get_parameter("pose_topic", POSE_TOPIC);
 
         declare_parameter("map_frame_id", "map");
         get_parameter("map_frame_id", MAP_FRAME);
@@ -139,7 +154,24 @@ public:
 float PointToPlaneDistance(const PointType& point, float A, float B, float C, float D) {
     return fabs(A * point.x + B * point.y + C * point.z + D) / sqrt(A * A + B * B + C * C);
 }
+rmw_qos_profile_t qos_profile_imu{
+    RMW_QOS_POLICY_HISTORY_KEEP_LAST,
+    2000,
+    RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
+    RMW_QOS_POLICY_DURABILITY_VOLATILE,
+    RMW_QOS_DEADLINE_DEFAULT,
+    RMW_QOS_LIFESPAN_DEFAULT,
+    RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT,
+    RMW_QOS_LIVELINESS_LEASE_DURATION_DEFAULT,
+    false
+};
 
+auto qos_imu = rclcpp::QoS(
+    rclcpp::QoSInitialization(
+        qos_profile_imu.history,
+        qos_profile_imu.depth
+    ),
+    qos_profile_imu);
 
 #endif
 

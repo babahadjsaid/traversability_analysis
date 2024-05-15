@@ -1,13 +1,13 @@
 traversability_analysis:
   ros__parameters:
     pointCloudTopic: "lio_sam/mapping/map_global"
-    pose_topic: "/pose"
+    pose_topic: "odometry/imu"
     costMapTopic: "map"
 
     map_frame_id: "map"
     circle_radius: 10.0
-    cell_resolution: 0.2
-    T_diff: 0.7
+    cell_resolution: 0.17
+    T_diff: 0.4
     T_high: 0.2
     T_low: -0.2
     max_height: 2.0
@@ -15,15 +15,15 @@ traversability_analysis:
     mean_grass: 24.8704
     variance_grass: 20.9897
     T_prob: 1.0e-7
-    num_grids_min: 9
+    num_grids_min: 8
 
-    T_ratio: 70.0
+    T_ratio: 20.0
     T_l: 0.2
     T_s: 4.0
 
-    T_neg: -0.2
-    T_pos: 0.2
+    T_neg: -0.15
+    T_pos: 0.15
     T_seg: 0.4
     T_inliners: 0.85
     T_Iterations: 1.2
-    Max_traversable_angle: 65.0
+    Max_traversable_angle: 55.0
