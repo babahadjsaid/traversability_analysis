@@ -23,21 +23,6 @@
 
 namespace traversability_analysis {
 struct NonGroundGrid;  
-
-  struct Cluster {
-    std::vector<NonGroundGrid*> grids;
-    pcl::PointCloud<PointType> pc;
-    float min_height,max_height,mean_height=0.0;
-    int color;
-    float H_f,angle=0;
-    bool Roughness = false;
-    std::string Type;
-    grid_map::Position Point_mass;
-    Eigen::Vector3f vec;
-    PointType p1;
-    std::stringstream *ss_,*sp_;
-
-};
 enum ObjectsCategories {
     gROUND,
     oBSTACLES,
@@ -45,12 +30,35 @@ enum ObjectsCategories {
     sLOPE,
     nEGATIVESLOPE
 };
+enum ClusterStatus {
+    nEw=0,
+    uPTODATE,
+    oLD,
+    tODELETE
+};
+
+  struct Cluster {
+    std::vector<NonGroundGrid*> grids;
+    pcl::PointCloud<PointType> pc;
+    float min_height,max_height,mean_height=0.0;
+    float H_f,angle=0;
+    bool Roughness = false;
+    grid_map::Position Point_mass;
+    ClusterStatus Status = nEw;
+    int color;
+    std::string Type;
+    std::stringstream *ss_;
+    Eigen::Vector3f vec;
+    PointType p1;
+
+};
 
 struct NonGroundGrid {
     grid_map::Index index;
     Cluster* cluster;
     int color;
     bool clustered = false;
+    long int idx;
 };
 
 
@@ -88,6 +96,7 @@ class TraversabilityAnalysis : public ParamServer{
     std::vector<NonGroundGrid> C_N_;
     std::vector<Cluster> Clusters_;
     std::vector<pcl::PointCloud<PointType>> gridsPointClouds_;
+    
     std::random_device randomDevice_;
     std::mt19937 generator_;
     nav_msgs::msg::Odometry currentOdom_;

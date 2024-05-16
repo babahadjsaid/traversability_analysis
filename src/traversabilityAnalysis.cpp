@@ -192,7 +192,6 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
         RNG = C_N_.size();
         tmp.index = idx;
         C_N_.push_back(tmp);
-
       }
       }
     
@@ -207,6 +206,14 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   // Define the distribution for random numbers between 0 and 255
   std::uniform_int_distribution<int> distribution(0, 255);
   
+  Clusters_.erase(std::remove_if(Clusters_.begin(), Clusters_.end(), [](traversability_analysis::Cluster& cluster) { 
+    if (cluster.Status == tODELETE) return true;
+    cluster.Status = oLD;
+    return false;
+    } ), Clusters_.end()
+  );
+
+ 
   for (size_t i = 0; i < C_N_.size(); i++)
   {
     auto color = distribution(generator_);
@@ -228,47 +235,85 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
       }
       continue;
     }
+    
     new_cluster.mean_height /= new_cluster.grids.size();
     new_cluster.Point_mass /= (float) new_cluster.grids.size();
     if(!firstPose_ && receivedPose_){
       grid_map::Position tmp, predicted;
-      double c = cos(displacement_.z()),s= sin(displacement_.z());
+      double c = cos(displacement_.z()), s = sin(displacement_.z());
       tmp.x() = new_cluster.Point_mass.x() + displacement_.x();
       tmp.y() = new_cluster.Point_mass.y() + displacement_.y();
       predicted.x() = tmp.x() * c + tmp.y() * -s;
       predicted.y() = tmp.x() * s + tmp.y() * c;
-      for (auto &&cluster : Clusters_)
-      {
-        grid_map::Index predictedIndex,trueIndex,diffIndex; 
-        elevationMap_.getIndex(predicted, predictedIndex);
-        elevationMap_.getIndex(cluster.Point_mass, trueIndex);
-        diffIndex = trueIndex - predictedIndex;
-        double ratio = cluster.grids.size() / (new_cluster.grids.size() + 0.0);
-        if (abs(diffIndex(0)) <= 1 && abs(diffIndex(1)) <= 1)
-        {
-          cluster = new_cluster;
-          goto exit;
-        }
-        // else if (abs(diffIndex(0)) <= 10 && abs(diffIndex(1)) <= 10 && 0.5<ratio<1.5)
-        // {
-        // }
+      bool found = false;
+      
+      traversability_analysis::Cluster *matchedCluster;
+      grid_map::Index predictedIndex,trueIndex,diffIndex; 
+      elevationMap_.getIndex(new_cluster.Point_mass, trueIndex);
+      
+      for (size_t i = 0; i < Clusters_.size(); i++) {
+        auto &cluster = Clusters_[i];
 
-        
+        if (cluster.Status == tODELETE) continue;
+        if (!elevationMap_.getIndex(predicted, predictedIndex))
+        {
+          cluster.Status = tODELETE;
+          continue;
+        }
+        diffIndex = trueIndex - predictedIndex;
+        double ratio = cluster.grids.size() / (double) new_cluster.grids.size();
+
+        if (abs(diffIndex(0)) <= 2 && abs(diffIndex(1)) <= 2)
+        {
+          matchedCluster = &cluster;
+          found = true;
+          break;
+        }
+        else if (abs(diffIndex(0)) <= 4 && abs(diffIndex(1)) <= 4 && 0.5<ratio<1.5)
+        {
+          matchedCluster = &cluster;
+          found = true;
+          break;
+        }
       }
+      if (found)
+      {
+          matchedCluster->mean_height = new_cluster.mean_height;
+          matchedCluster->max_height = new_cluster.max_height;
+          matchedCluster->min_height = new_cluster.min_height;
+          matchedCluster->grids = new_cluster.grids;
+          matchedCluster->pc = new_cluster.pc;
+          matchedCluster->Point_mass = new_cluster.Point_mass;
+          matchedCluster->Status = uPTODATE;
+          continue;
+      }
+      
       
     }
     Clusters_.push_back(new_cluster);
-    exit:
-    continue;
+    
   }
+ 
+   std::cout << "Current Clusters: {";
+  for (auto &&cluster : Clusters_)
+  {
+    std::cout << cluster.Status  << ", ";
+  }
+  std::cout << "}."<<std::endl;
   
   // gridsPointClouds_.clear();
   const auto EndClustering = std::chrono::system_clock::now();
   //                                                                                            End Grids clustering.
   //                                                                                            Start Cost Calculation.
   
-  for (auto &&cluster : Clusters_)
-  {
+  for (size_t i = 0; i < Clusters_.size(); i++) {
+    auto &cluster = Clusters_[i];
+    if (cluster.Status == tODELETE) continue;
+    if (cluster.Status == nEw) cluster.Status = oLD;
+    else if (cluster.Status == oLD) cluster.Status = tODELETE;
+    
+    
+    
     float H_d = cluster.max_height - cluster.min_height;
     
     if(cluster.mean_height>=0) cluster.H_f = std::max(H_d,cluster.mean_height);
@@ -306,7 +351,8 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     default:
       break;
     }
-
+    
+    
     for (auto &&grid : cluster.grids)
     {
       auto& cat = catigorisationLayer(grid->index(0),grid->index(1));
@@ -339,10 +385,11 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   double durationOfSegmentationMS = 1000 * durationOfSegmentation.count();
   double durationOfClusteringMS = 1000 * durationOfClustering.count();
   // SaveData();
-  // RCLCPP_INFO(get_logger(), "Done processing number of non ground grid found is %ld, Projection Step took %f ms, segmentation Step Took %f ms, clustering (Num of clusters %ld) Step Took %f ms.",C_N_.size(),durationOfProjectionMS,durationOfSegmentationMS,Clusters_.size(),durationOfClusteringMS);
+  RCLCPP_INFO(get_logger(), "Done processing number of non ground grid found is %ld, Projection Step took %f ms, segmentation Step Took %f ms, clustering (Num of clusters %ld) Step Took %f ms.",C_N_.size(),durationOfProjectionMS,durationOfSegmentationMS,Clusters_.size(),durationOfClusteringMS);
   C_N_.clear();
   // Clusters_.clear();
-  
+  //if(!firstPose_ && receivedPose_) rclcpp::shutdown();
+  //delete from cluster
 }
 
 
@@ -377,6 +424,7 @@ void TraversabilityAnalysis::FloodFill(grid_map::Index index,Cluster *cluster,in
     NonGroundGrid* grid = &C_N_[idx];
     grid->cluster = cluster;
     grid->clustered = true;
+    grid->idx = idx;
     cluster->grids.push_back(grid);
     cluster->mean_height += mean_height_Grid;
     grid_map::Position pos;

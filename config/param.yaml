@@ -15,7 +15,7 @@ traversability_analysis:
     mean_grass: 24.8704
     variance_grass: 20.9897
     T_prob: 1.0e-7
-    num_grids_min: 8
+    num_grids_min: 9
 
     T_ratio: 20.0
     T_l: 0.2
