@@ -64,7 +64,25 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   }
   if(!firstPose_ && receivedPose_){
     displacement_ =  previousPose_ - currentPose_;
-    
+    std::cout << "before deleting "<< Clusters_.size()<<std::endl;
+    Clusters_.erase(std::remove_if(Clusters_.begin(), Clusters_.end(), [](traversability_analysis::Cluster& cluster) { 
+      if (cluster.Status == tODELETE) return true;
+      cluster.Status = oLD;
+      return false;
+      } ), Clusters_.end());
+    std::cout << "after deleting "<< displacement_<<std::endl;
+    double c = cos(displacement_.z()), s = sin(displacement_.z());
+    for (auto &&cluster : Clusters_)
+    {
+      grid_map::Position tmp, predicted;
+      std::cout << "before applying the motion " << cluster.Point_mass << std::endl;
+      tmp.x() = cluster.Point_mass.x() + displacement_.x();
+      tmp.y() = cluster.Point_mass.y() + displacement_.y();
+      predicted.x() = tmp.x() * c + tmp.y() * -s;
+      predicted.y() = tmp.x() * s + tmp.y() * c;
+      cluster.Point_mass = predicted;
+      std::cout << "after applying the motion " << cluster.Point_mass << std::endl;
+    }
   }
   const auto methodStartTime = std::chrono::system_clock::now();
   pcl::PointCloud<PointType>::Ptr pointCloud(new pcl::PointCloud<PointType>());
@@ -206,19 +224,14 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   // Define the distribution for random numbers between 0 and 255
   std::uniform_int_distribution<int> distribution(0, 255);
   
-  Clusters_.erase(std::remove_if(Clusters_.begin(), Clusters_.end(), [](traversability_analysis::Cluster& cluster) { 
-    if (cluster.Status == tODELETE) return true;
-    cluster.Status = oLD;
-    return false;
-    } ), Clusters_.end()
-  );
-
+  
  
   for (size_t i = 0; i < C_N_.size(); i++)
   {
     auto color = distribution(generator_);
     if (C_N_[i].clustered) continue;
     Cluster new_cluster;
+    new_cluster.Point_mass = {0,0};
     FloodFill(C_N_[i].index,&new_cluster, color);
     
 
@@ -239,54 +252,47 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     new_cluster.mean_height /= new_cluster.grids.size();
     new_cluster.Point_mass /= (float) new_cluster.grids.size();
     if(!firstPose_ && receivedPose_){
-      grid_map::Position tmp, predicted;
-      double c = cos(displacement_.z()), s = sin(displacement_.z());
-      tmp.x() = new_cluster.Point_mass.x() + displacement_.x();
-      tmp.y() = new_cluster.Point_mass.y() + displacement_.y();
-      predicted.x() = tmp.x() * c + tmp.y() * -s;
-      predicted.y() = tmp.x() * s + tmp.y() * c;
       bool found = false;
-      
+      double diff = 5;
       traversability_analysis::Cluster *matchedCluster;
+
       grid_map::Index predictedIndex,trueIndex,diffIndex; 
-      elevationMap_.getIndex(new_cluster.Point_mass, trueIndex);
       
+      elevationMap_.getIndex(new_cluster.Point_mass, trueIndex);
       for (size_t i = 0; i < Clusters_.size(); i++) {
         auto &cluster = Clusters_[i];
-
+        
         if (cluster.Status == tODELETE) continue;
-        if (!elevationMap_.getIndex(predicted, predictedIndex))
+        if (!elevationMap_.getIndex(cluster.Point_mass, predictedIndex))
         {
           cluster.Status = tODELETE;
           continue;
         }
         diffIndex = trueIndex - predictedIndex;
         double ratio = cluster.grids.size() / (double) new_cluster.grids.size();
-
-        if (abs(diffIndex(0)) <= 2 && abs(diffIndex(1)) <= 2)
+        if (abs(diffIndex(0)) <= 5 && abs(diffIndex(1)) <= 5)
         {
-          matchedCluster = &cluster;
-          found = true;
-          break;
+          double tmp = sqrt(pow(diffIndex(0),2) + pow(diffIndex(1),2));
+          if(diff > tmp) {
+            diff = tmp;
+            matchedCluster = &cluster;
+            found = true;
+          }
         }
-        else if (abs(diffIndex(0)) <= 4 && abs(diffIndex(1)) <= 4 && 0.5<ratio<1.5)
-        {
-          matchedCluster = &cluster;
-          found = true;
-          break;
-        }
+        
       }
-      if (found)
-      {
-          matchedCluster->mean_height = new_cluster.mean_height;
-          matchedCluster->max_height = new_cluster.max_height;
-          matchedCluster->min_height = new_cluster.min_height;
-          matchedCluster->grids = new_cluster.grids;
-          matchedCluster->pc = new_cluster.pc;
-          matchedCluster->Point_mass = new_cluster.Point_mass;
-          matchedCluster->Status = uPTODATE;
-          continue;
+      if(found){
+        matchedCluster->mean_height = new_cluster.mean_height;
+        matchedCluster->max_height = new_cluster.max_height;
+        matchedCluster->min_height = new_cluster.min_height;
+        matchedCluster->grids = new_cluster.grids;
+        matchedCluster->pc = new_cluster.pc;
+        matchedCluster->Point_mass = new_cluster.Point_mass;
+        matchedCluster->Status = uPTODATE;
+        
+        continue;
       }
+      
       
       
     }
