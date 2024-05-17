@@ -13,7 +13,8 @@ elevationMap_({MAXHEIGHTLAYER,MINHEIGHTLAYER,MEANHEIGHTLAYER,SEGMENTATIONLAYER,R
 kernel_(3,3),
 generator_(randomDevice_()),
 firstPose_(true),
-receivedPose_(false)
+receivedPose_(false),
+BenchmarkTiming_("")
 {
   pointCloudSub_ = create_subscription<sensor_msgs::msg::PointCloud2>(PC_TOPIC, 1,std::bind(&TraversabilityAnalysis::PointCloudHandler, this, std::placeholders::_1));
   robotPoseSubscriber_ = create_subscription<nav_msgs::msg::Odometry>(POSE_TOPIC, qos_imu,std::bind(&TraversabilityAnalysis::OdometryHandler, this, std::placeholders::_1));
@@ -25,8 +26,7 @@ receivedPose_(false)
   elevationMap_.setFrameId(MAP_FRAME);
   elevationMap_.setGeometry(grid_map::Length(side_length,side_length),CELL_RESOLUTION,grid_map::Position(0,0));
   size_ = elevationMap_.getSize();
-  
-  
+  Colors_ = linspace(0,255,NUM_COLORS);
 
 }
 void TraversabilityAnalysis::OdometryHandler(nav_msgs::msg::Odometry::SharedPtr poseMsg){
@@ -62,31 +62,57 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     mapMtx_.unlock();
     return;
   }
+  
+   
+  Clusters_.erase(std::remove_if(Clusters_.begin(), Clusters_.end(), [](traversability_analysis::Cluster& cluster) { 
+    if (cluster.Status == tODELETE) return true;
+    cluster.Status = oLD;
+    return false;
+    } ), Clusters_.end());
+
   if(!firstPose_ && receivedPose_){
     displacement_ =  previousPose_ - currentPose_;
-    std::cout << "before deleting "<< Clusters_.size()<<std::endl;
-    Clusters_.erase(std::remove_if(Clusters_.begin(), Clusters_.end(), [](traversability_analysis::Cluster& cluster) { 
-      if (cluster.Status == tODELETE) return true;
-      cluster.Status = oLD;
-      return false;
-      } ), Clusters_.end());
-    std::cout << "after deleting "<< displacement_<<std::endl;
     double c = cos(displacement_.z()), s = sin(displacement_.z());
     for (auto &&cluster : Clusters_)
     {
       grid_map::Position tmp, predicted;
-      std::cout << "before applying the motion " << cluster.Point_mass << std::endl;
       tmp.x() = cluster.Point_mass.x() + displacement_.x();
       tmp.y() = cluster.Point_mass.y() + displacement_.y();
       predicted.x() = tmp.x() * c + tmp.y() * -s;
       predicted.y() = tmp.x() * s + tmp.y() * c;
       cluster.Point_mass = predicted;
-      std::cout << "after applying the motion " << cluster.Point_mass << std::endl;
     }
   }
-  const auto methodStartTime = std::chrono::system_clock::now();
+  
+  
   pcl::PointCloud<PointType>::Ptr pointCloud(new pcl::PointCloud<PointType>());
   pcl::moveFromROSMsg(*pointCloudMsg, *pointCloud);
+  InitMapLayers();
+  MapProjection(pointCloud);
+  BenchmarkTiming_.str("");
+  std::cout << "hellooo"<<std::endl;
+  BenchmarkFunction(this,&TraversabilityAnalysis::GroundSegmentation,"Ground Segmentation");
+  BenchmarkFunction(this,&TraversabilityAnalysis::NonGroundGridClustering, "Non-Ground GridClustering ");
+  BenchmarkFunction(this,&TraversabilityAnalysis::CostCalculation,"Cost Calculation");
+  std::cout << BenchmarkTiming_.str() << std::endl;
+ 
+  std::unique_ptr<grid_map_msgs::msg::GridMap> message;
+  message = grid_map::GridMapRosConverter::toMessage(elevationMap_);
+  costMapPub_->publish(std::move(message));
+  elevationMap_.clearAll();
+  if (receivedPose_)
+  {
+    previousPose_ = currentPose_;
+    receivedPose_ = false;
+    firstPose_ = false;
+  }
+  // SaveData();
+  C_N_.clear();
+  mapMtx_.unlock();
+  
+}
+
+void TraversabilityAnalysis::InitMapLayers(){
   auto& min_heightLayer = elevationMap_[MINHEIGHTLAYER];
   auto& max_heightLayer = elevationMap_[MAXHEIGHTLAYER];
   auto& mean_heightLayer = elevationMap_[MEANHEIGHTLAYER];
@@ -94,14 +120,24 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   auto& RNGLayer = elevationMap_[REFRENCENONGRIDLAYER];
   auto& segmentLayer = elevationMap_[SEGMENTATIONLAYER];
   auto& catigorisationLayer = elevationMap_[CATIGORISATION];
+  auto& colorLayer = elevationMap_[COLORLAYER];
   mean_heightLayer.setZero();
   max_heightLayer.setZero();
   min_heightLayer.setConstant(MAX_HEIGHT);
   RTGPCLayer.setConstant(-1);
   RNGLayer.setConstant(-1);
   catigorisationLayer.setZero();
+}
 
-  //                                                                                            Start Map Projection.
+void TraversabilityAnalysis::MapProjection(pcl::PointCloud<PointType>::Ptr pointCloud){
+  auto& min_heightLayer = elevationMap_[MINHEIGHTLAYER];
+  auto& max_heightLayer = elevationMap_[MAXHEIGHTLAYER];
+  auto& mean_heightLayer = elevationMap_[MEANHEIGHTLAYER];
+  auto& RTGPCLayer = elevationMap_[GRIDSPOINTCLOUD];
+  auto& RNGLayer = elevationMap_[REFRENCENONGRIDLAYER];
+  auto& segmentLayer = elevationMap_[SEGMENTATIONLAYER];
+  auto& catigorisationLayer = elevationMap_[CATIGORISATION];
+  auto& colorLayer = elevationMap_[COLORLAYER];
   #pragma omp parallel for num_threads(5)
   for (unsigned int i = 0; i < pointCloud->size(); ++i)
   {
@@ -148,14 +184,18 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
 
 
   }
-  // RCLCPP_INFO(get_logger(), "pdf=%f, minimum=%f",mean_pdf/count,min_pdf);
-  const auto EndProjection = std::chrono::system_clock::now();
-  //                                                                                            End Map Projection.
-  //                                                                                            Start Ground Segmentation.
-  const std::chrono::duration<double> durations  = std::chrono::system_clock::now() - methodStartTime;
-  //RCLCPP_INFO(get_logger(), "dDone in  %f ms.", 1000* durations.count());
-  
-  
+
+}
+
+void TraversabilityAnalysis::GroundSegmentation(){
+  auto& min_heightLayer = elevationMap_[MINHEIGHTLAYER];
+  auto& max_heightLayer = elevationMap_[MAXHEIGHTLAYER];
+  auto& mean_heightLayer = elevationMap_[MEANHEIGHTLAYER];
+  auto& RTGPCLayer = elevationMap_[GRIDSPOINTCLOUD];
+  auto& RNGLayer = elevationMap_[REFRENCENONGRIDLAYER];
+  auto& segmentLayer = elevationMap_[SEGMENTATIONLAYER];
+  auto& catigorisationLayer = elevationMap_[CATIGORISATION];
+  auto& colorLayer = elevationMap_[COLORLAYER];
   // #pragma omp parallel for num_threads(5)
   for (int i = 0; i < size_(0); i++)
   {
@@ -170,7 +210,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
       float& RTGPC        = RTGPCLayer(i,j);
       float& cat          = catigorisationLayer(i,j);
 
-      if (min_height==MAX_HEIGHT) // if the cell was not visited.
+      if (min_height==MAX_HEIGHT) // if the cell was not visited. means no information.
       {
         min_height = max_height = mean_height = 0;
         segmentation = 2;
@@ -195,6 +235,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
       bool allZeros = true, allOnes = true;
       Eigen::MatrixXf segs;
       if (!(i>0 && i < mean_heightLayer.rows()-1 && j>0 && j < mean_heightLayer.cols()-1)) goto AddToNonGrid;
+
       kernel_ << -1, -2, -1, 0, 0, 0, 1, 2, 1;// dx
       cat = pow((mean_heightLayer.block(i-1,j-1,3,3).array() * kernel_.array()).sum(),2);
       kernel_ << 1, 0, -1, 2, 0, -2, 1, 0, -1;// dy
@@ -216,23 +257,24 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   }
   
 
-  const auto EndSegmentation = std::chrono::system_clock::now();
-  //                                                                                            End Ground Segmentation.
-  //                                                                                            Start Grids clustering.
-  
-  
-  // Define the distribution for random numbers between 0 and 255
-  std::uniform_int_distribution<int> distribution(0, 255);
-  
-  
- 
+}
+
+
+void TraversabilityAnalysis::NonGroundGridClustering(){
+  auto& min_heightLayer = elevationMap_[MINHEIGHTLAYER];
+  auto& max_heightLayer = elevationMap_[MAXHEIGHTLAYER];
+  auto& mean_heightLayer = elevationMap_[MEANHEIGHTLAYER];
+  auto& RTGPCLayer = elevationMap_[GRIDSPOINTCLOUD];
+  auto& RNGLayer = elevationMap_[REFRENCENONGRIDLAYER];
+  auto& segmentLayer = elevationMap_[SEGMENTATIONLAYER];
+  auto& catigorisationLayer = elevationMap_[CATIGORISATION];
+  auto& colorLayer = elevationMap_[COLORLAYER];
   for (size_t i = 0; i < C_N_.size(); i++)
   {
-    auto color = distribution(generator_);
     if (C_N_[i].clustered) continue;
     Cluster new_cluster;
     new_cluster.Point_mass = {0,0};
-    FloodFill(C_N_[i].index,&new_cluster, color);
+    FloodFill(C_N_[i].index, C_N_[i].index, &new_cluster);
     
 
     if (new_cluster.grids.size() < NUM_GRIDS_MIN)
@@ -251,9 +293,10 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     
     new_cluster.mean_height /= new_cluster.grids.size();
     new_cluster.Point_mass /= (float) new_cluster.grids.size();
+
     if(!firstPose_ && receivedPose_){
       bool found = false;
-      double diff = 5;
+      double diff = MAX_NUM_GRIDS;
       traversability_analysis::Cluster *matchedCluster;
 
       grid_map::Index predictedIndex,trueIndex,diffIndex; 
@@ -270,7 +313,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
         }
         diffIndex = trueIndex - predictedIndex;
         double ratio = cluster.grids.size() / (double) new_cluster.grids.size();
-        if (abs(diffIndex(0)) <= 5 && abs(diffIndex(1)) <= 5)
+        if (abs(diffIndex(0)) <= MAX_NUM_GRIDS && abs(diffIndex(1)) <= MAX_NUM_GRIDS)
         {
           double tmp = sqrt(pow(diffIndex(0),2) + pow(diffIndex(1),2));
           if(diff > tmp) {
@@ -292,40 +335,41 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
         
         continue;
       }
-      
-      
-      
     }
+    new_cluster.color = Colors_[Clusters_.size()%NUM_COLORS];
     Clusters_.push_back(new_cluster);
     
-  }
- 
-   std::cout << "Current Clusters: {";
-  for (auto &&cluster : Clusters_)
-  {
-    std::cout << cluster.Status  << ", ";
-  }
-  std::cout << "}."<<std::endl;
+  } 
   
-  // gridsPointClouds_.clear();
-  const auto EndClustering = std::chrono::system_clock::now();
-  //                                                                                            End Grids clustering.
-  //                                                                                            Start Cost Calculation.
-  
-  for (size_t i = 0; i < Clusters_.size(); i++) {
+}
+
+
+void TraversabilityAnalysis::CostCalculation(){
+  auto& min_heightLayer = elevationMap_[MINHEIGHTLAYER];
+  auto& max_heightLayer = elevationMap_[MAXHEIGHTLAYER];
+  auto& mean_heightLayer = elevationMap_[MEANHEIGHTLAYER];
+  auto& RTGPCLayer = elevationMap_[GRIDSPOINTCLOUD];
+  auto& RNGLayer = elevationMap_[REFRENCENONGRIDLAYER];
+  auto& segmentLayer = elevationMap_[SEGMENTATIONLAYER];
+  auto& catigorisationLayer = elevationMap_[CATIGORISATION];
+  auto& colorLayer = elevationMap_[COLORLAYER];
+   for (size_t i = 0; i < Clusters_.size(); i++) {
     auto &cluster = Clusters_[i];
     if (cluster.Status == tODELETE) continue;
+
     if (cluster.Status == nEw) cluster.Status = oLD;
-    else if (cluster.Status == oLD) cluster.Status = tODELETE;
-    
-    
+    else if (cluster.Status == oLD){
+      cluster.Status = tODELETE;
+      continue;
+    }
+   
     
     float H_d = cluster.max_height - cluster.min_height;
     
-    if(cluster.mean_height>=0) cluster.H_f = std::max(H_d,cluster.mean_height);
-    else cluster.H_f = std::min(-H_d,cluster.mean_height);
+    if(cluster.mean_height>=0)                        cluster.H_f = std::max(H_d,cluster.mean_height);
+      else                                            cluster.H_f = std::min(-H_d,cluster.mean_height);
     
-    if (T_NEG < cluster.H_f && cluster.H_f < T_POS) cluster.Type = OBSTACLES;
+    if (T_NEG < cluster.H_f && cluster.H_f < T_POS)   cluster.Type = OBSTACLES;
     
     if (cluster.H_f >= T_POS)
     {
@@ -362,6 +406,8 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     for (auto &&grid : cluster.grids)
     {
       auto& cat = catigorisationLayer(grid->index(0),grid->index(1));
+      auto& color = colorLayer(grid->index(0),grid->index(1));
+      color = cluster.color;
       if (cost == 1)
       {
         cat = 1.0;
@@ -372,35 +418,9 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     }
     
   }
-  
-  std::unique_ptr<grid_map_msgs::msg::GridMap> message;
-  message = grid_map::GridMapRosConverter::toMessage(elevationMap_);
-  costMapPub_->publish(std::move(message));
-  elevationMap_.clearAll();
-  if (receivedPose_)
-  {
-    previousPose_ = currentPose_;
-    receivedPose_ = false;
-    firstPose_ = false;
-  }
-  mapMtx_.unlock();
-  const std::chrono::duration<double> durationOfProjection = EndProjection - methodStartTime;
-  const std::chrono::duration<double> durationOfSegmentation = EndSegmentation - EndProjection;
-  const std::chrono::duration<double> durationOfClustering = EndClustering - EndSegmentation;
-  double durationOfProjectionMS = 1000 * durationOfProjection.count();
-  double durationOfSegmentationMS = 1000 * durationOfSegmentation.count();
-  double durationOfClusteringMS = 1000 * durationOfClustering.count();
-  // SaveData();
-  RCLCPP_INFO(get_logger(), "Done processing number of non ground grid found is %ld, Projection Step took %f ms, segmentation Step Took %f ms, clustering (Num of clusters %ld) Step Took %f ms.",C_N_.size(),durationOfProjectionMS,durationOfSegmentationMS,Clusters_.size(),durationOfClusteringMS);
-  C_N_.clear();
-  // Clusters_.clear();
-  //if(!firstPose_ && receivedPose_) rclcpp::shutdown();
-  //delete from cluster
+
+
 }
-
-
-
-
 
 
 ObjectsCategories TraversabilityAnalysis::checkCategory(std::string &categoryName){
@@ -412,20 +432,20 @@ ObjectsCategories TraversabilityAnalysis::checkCategory(std::string &categoryNam
 }
 
 
-void TraversabilityAnalysis::FloodFill(grid_map::Index index,Cluster *cluster,int color)
+void TraversabilityAnalysis::FloodFill(grid_map::Index index,grid_map::Index prevIndex, Cluster *cluster)
 {
     // Base cases 
     if (index(0) < 0 || index(0) >= size_(0) || index(1) < 0 || index(1) >= size_(1)) return;
     auto& segmentation = elevationMap_.at(SEGMENTATIONLAYER,index);
     auto& RNG = elevationMap_.at(REFRENCENONGRIDLAYER,index);
     auto& max_height_Grid = elevationMap_.at(MAXHEIGHTLAYER,index);
+    auto& max_height_prevGrid = elevationMap_.at(MAXHEIGHTLAYER,prevIndex);
     long int idx = RNG;
-    if (segmentation==false || segmentation==2 || C_N_[idx].clustered ) return; // || abs(max_height_Grid - cluster->max_height) > 0.5; TODO
+    if (segmentation==false || segmentation==2 || C_N_[idx].clustered || abs(max_height_Grid - max_height_prevGrid) > 0.4) return; // ; TODO
     auto& colorGrid = elevationMap_.at(COLORLAYER,index);
     auto& min_height_Grid = elevationMap_.at(MINHEIGHTLAYER,index);
     auto& mean_height_Grid = elevationMap_.at(MEANHEIGHTLAYER,index);
     auto& RTGPC = elevationMap_.at(GRIDSPOINTCLOUD,index);
-    colorGrid = color;
     // Add Grid to cluster.
     NonGroundGrid* grid = &C_N_[idx];
     grid->cluster = cluster;
@@ -456,20 +476,12 @@ void TraversabilityAnalysis::FloodFill(grid_map::Index index,Cluster *cluster,in
         cluster->min_height = min_height_Grid;
       }
     }
-    
-    
-    // Recursively call for north, south, east and west.
-    // FloodFill(grid_map::Index(index(0)+1,index(1)), cluster, color);
-    // FloodFill(grid_map::Index(index(0)-1,index(1)), cluster, color);
-    // FloodFill(grid_map::Index(index(0),index(1)+1), cluster, color);
-    // FloodFill(grid_map::Index(index(0),index(1)-1), cluster, color);
 
     // Recursively call for the 8 directions.
     for (int k = -1; k < 2; ++k) {
           for (int l = -1; l < 2; ++l) {
             if (k==0 && l==0) continue;
-            FloodFill(grid_map::Index(index(0)+k,index(1)+l),cluster,color);
-            
+            FloodFill(grid_map::Index(index(0)+k,index(1)+l), index, cluster);
           }
       }
    

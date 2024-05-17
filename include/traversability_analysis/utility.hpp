@@ -62,7 +62,7 @@ public:
     float RADIUS, CELL_RESOLUTION,T_DIFF,T_HIGH,T_LOW,
     MAX_HEIGHT, MEAN_GRASS, VARIANCE_GRASS, T_PROB, UB,
     LB, T_RATIO, T_L, T_S, T_NEG, T_POS, T_SEG, T_INLINERS, T_ITERATIONS, MAXANGLE;
-    int NUM_GRIDS_MIN;
+    int NUM_GRIDS_MIN, NUM_COLORS, MAX_NUM_GRIDS;
     ParamServer(std::string node_name, const rclcpp::NodeOptions & options) : Node(node_name, options)
     {
         declare_parameter("pointCloudTopic", "/points");
@@ -140,6 +140,11 @@ public:
         get_parameter("Max_traversable_angle", MAXANGLE);
         MAXANGLE *= (M_PI/180.0);
 
+        declare_parameter("Num_Colors", 50);
+        get_parameter("Num_Colors", NUM_COLORS);
+
+        declare_parameter("Max_Num_Grids", 10);
+        get_parameter("Max_Num_Grids", MAX_NUM_GRIDS);
 
         usleep(100);
     }
@@ -154,6 +159,19 @@ public:
 float PointToPlaneDistance(const PointType& point, float A, float B, float C, float D) {
     return fabs(A * point.x + B * point.y + C * point.z + D) / sqrt(A * A + B * B + C * C);
 }
+template<typename T>
+std::vector<T> linspace(T start ,T end, int num_colors) {
+    std::vector<T> color_levels;
+    double interval = (end - start) / (num_colors - 1); // Calculate the interval between colors
+
+    for (int i = 0; i < num_colors; ++i) {
+        T color = start + i * interval;
+        color_levels.push_back(color);
+    }
+
+    return color_levels;
+}
+
 rmw_qos_profile_t qos_profile_imu{
     RMW_QOS_POLICY_HISTORY_KEEP_LAST,
     2000,
@@ -172,6 +190,16 @@ auto qos_imu = rclcpp::QoS(
         qos_profile_imu.depth
     ),
     qos_profile_imu);
+
+template<typename Func, typename Type>
+void BenchmarkFunction(Type* self, Func func, std::string function_name)
+ {
+    const auto methodStartTime = std::chrono::system_clock::now();
+    (self->*func)();
+    const std::chrono::duration<double> durationOfFunction = std::chrono::system_clock::now() - methodStartTime;
+    double durationOfFunctionMS = 1000 * durationOfFunction.count();
+    self->BenchmarkTiming_<<"The function " << function_name << " Took " << durationOfFunctionMS <<" ms ";
+  }
 
 #endif
 

@@ -27,3 +27,5 @@ traversability_analysis:
     T_inliners: 0.85
     T_Iterations: 1.2
     Max_traversable_angle: 55.0
+    Num_Colors: 50
+    Max_Num_Grids: 10

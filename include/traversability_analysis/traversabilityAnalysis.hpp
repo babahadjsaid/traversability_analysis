@@ -64,16 +64,21 @@ struct NonGroundGrid {
 
 class TraversabilityAnalysis : public ParamServer{
  public:
-   long int numFrames_=0;
-   float avgTime_;
+    long int numFrames_=0;
+    float avgTime_;
+    std::stringstream BenchmarkTiming_;
     /*!
     * Constructor.
     */
     explicit TraversabilityAnalysis(std::string node_name, const rclcpp::NodeOptions & options);
-
+    void InitMapLayers();
     void PointCloudHandler(sensor_msgs::msg::PointCloud2::SharedPtr pointCloudMsg);
+    void MapProjection(pcl::PointCloud<PointType>::Ptr pointCloud);
+    void NonGroundGridClustering();
+    void CostCalculation();
+    void GroundSegmentation();
     void OdometryHandler(nav_msgs::msg::Odometry::SharedPtr poseMsg);
-    void FloodFill(grid_map::Index index,Cluster *cluster, int color);
+    void FloodFill(grid_map::Index index,grid_map::Index prevIndex, Cluster *cluster);
     bool CalculateRoughness(Cluster &cluster);
     void EstimateAngle(Cluster &cluster);
     void savePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename);
@@ -93,6 +98,7 @@ class TraversabilityAnalysis : public ParamServer{
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr robotPoseSubscriber_;
     
     Eigen::MatrixXf kernel_;
+    std::vector<int> Colors_;
     std::vector<NonGroundGrid> C_N_;
     std::vector<Cluster> Clusters_;
     std::vector<pcl::PointCloud<PointType>> gridsPointClouds_;
