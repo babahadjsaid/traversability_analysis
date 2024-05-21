@@ -28,4 +28,4 @@ traversability_analysis:
     T_Iterations: 1.2
     Max_traversable_angle: 55.0
     Num_Colors: 50
-    Max_Num_Grids: 10
+    Max_Num_Grids: 8

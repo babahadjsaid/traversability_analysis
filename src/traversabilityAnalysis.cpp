@@ -9,12 +9,12 @@ namespace traversability_analysis{
 
 TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclcpp::NodeOptions & options)
 : ParamServer(node_name, options),
-elevationMap_({MAXHEIGHTLAYER,MINHEIGHTLAYER,MEANHEIGHTLAYER,SEGMENTATIONLAYER,REFRENCENONGRIDLAYER,COLORLAYER,GRIDSPOINTCLOUD,CATIGORISATION}),
-kernel_(3,3),
-generator_(randomDevice_()),
-firstPose_(true),
-receivedPose_(false),
-BenchmarkTiming_("")
+  elevationMap_({MAXHEIGHTLAYER,MINHEIGHTLAYER,MEANHEIGHTLAYER,SEGMENTATIONLAYER,REFRENCENONGRIDLAYER,COLORLAYER,GRIDSPOINTCLOUD,CATIGORISATION}),
+  kernel_(3,3),
+  generator_(randomDevice_()),
+  firstPose_(true),
+  receivedPose_(false),
+  BenchmarkTiming_("")
 {
   pointCloudSub_ = create_subscription<sensor_msgs::msg::PointCloud2>(PC_TOPIC, 1,std::bind(&TraversabilityAnalysis::PointCloudHandler, this, std::placeholders::_1));
   robotPoseSubscriber_ = create_subscription<nav_msgs::msg::Odometry>(POSE_TOPIC, qos_imu,std::bind(&TraversabilityAnalysis::OdometryHandler, this, std::placeholders::_1));
@@ -88,9 +88,8 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   pcl::PointCloud<PointType>::Ptr pointCloud(new pcl::PointCloud<PointType>());
   pcl::moveFromROSMsg(*pointCloudMsg, *pointCloud);
   InitMapLayers();
-  MapProjection(pointCloud);
-  BenchmarkTiming_.str("");
-  std::cout << "hellooo"<<std::endl;
+  BenchmarkTiming_.str("");//turn this to a class.
+  BenchmarkFunction(this,&TraversabilityAnalysis::MapProjection,"Map Projection",pointCloud);
   BenchmarkFunction(this,&TraversabilityAnalysis::GroundSegmentation,"Ground Segmentation");
   BenchmarkFunction(this,&TraversabilityAnalysis::NonGroundGridClustering, "Non-Ground GridClustering ");
   BenchmarkFunction(this,&TraversabilityAnalysis::CostCalculation,"Cost Calculation");
@@ -130,14 +129,7 @@ void TraversabilityAnalysis::InitMapLayers(){
 }
 
 void TraversabilityAnalysis::MapProjection(pcl::PointCloud<PointType>::Ptr pointCloud){
-  auto& min_heightLayer = elevationMap_[MINHEIGHTLAYER];
-  auto& max_heightLayer = elevationMap_[MAXHEIGHTLAYER];
-  auto& mean_heightLayer = elevationMap_[MEANHEIGHTLAYER];
-  auto& RTGPCLayer = elevationMap_[GRIDSPOINTCLOUD];
-  auto& RNGLayer = elevationMap_[REFRENCENONGRIDLAYER];
-  auto& segmentLayer = elevationMap_[SEGMENTATIONLAYER];
-  auto& catigorisationLayer = elevationMap_[CATIGORISATION];
-  auto& colorLayer = elevationMap_[COLORLAYER];
+  
   #pragma omp parallel for num_threads(5)
   for (unsigned int i = 0; i < pointCloud->size(); ++i)
   {
@@ -148,10 +140,10 @@ void TraversabilityAnalysis::MapProjection(pcl::PointCloud<PointType>::Ptr point
       continue;
     }
    
-    auto& max_height = max_heightLayer(index(0), index(1));
-    auto& min_height = min_heightLayer(index(0), index(1));
-    auto& mean_height = mean_heightLayer(index(0), index(1));
-    auto& RTGPC = RTGPCLayer(index(0), index(1));
+    auto& max_height = elevationMap_.at(MAXHEIGHTLAYER,index); 
+    auto& min_height = elevationMap_.at(MINHEIGHTLAYER,index);
+    auto& mean_height = elevationMap_.at(MEANHEIGHTLAYER,index);
+    auto& RTGPC = elevationMap_.at(GRIDSPOINTCLOUD,index);
     
     // double pdf = NormalPDF(point.intensity, MEAN_GRASS, VARIANCE_GRASS);
       if (point.z>T_HIGH && point.z<1.2 && point.intensity > LB && point.intensity < UB )
@@ -188,27 +180,20 @@ void TraversabilityAnalysis::MapProjection(pcl::PointCloud<PointType>::Ptr point
 }
 
 void TraversabilityAnalysis::GroundSegmentation(){
-  auto& min_heightLayer = elevationMap_[MINHEIGHTLAYER];
-  auto& max_heightLayer = elevationMap_[MAXHEIGHTLAYER];
   auto& mean_heightLayer = elevationMap_[MEANHEIGHTLAYER];
-  auto& RTGPCLayer = elevationMap_[GRIDSPOINTCLOUD];
-  auto& RNGLayer = elevationMap_[REFRENCENONGRIDLAYER];
-  auto& segmentLayer = elevationMap_[SEGMENTATIONLAYER];
-  auto& catigorisationLayer = elevationMap_[CATIGORISATION];
-  auto& colorLayer = elevationMap_[COLORLAYER];
   // #pragma omp parallel for num_threads(5)
   for (int i = 0; i < size_(0); i++)
   {
     // #pragma omp parallel for num_threads(5)
     for (int j = 0; j < size_(1); j++)
     {
-      float& segmentation = segmentLayer(i,j);
-      float& max_height   = max_heightLayer(i,j);
-      float& min_height   = min_heightLayer(i,j);
-      float& mean_height  = mean_heightLayer(i,j);
-      float& RNG          = RNGLayer(i,j);
-      float& RTGPC        = RTGPCLayer(i,j);
-      float& cat          = catigorisationLayer(i,j);
+      float& segmentation = elevationMap_.at(SEGMENTATIONLAYER,grid_map::Index(i,j));
+      float& max_height   = elevationMap_.at(MAXHEIGHTLAYER,grid_map::Index(i,j));
+      float& min_height   = elevationMap_.at(MINHEIGHTLAYER,grid_map::Index(i,j));
+      float& mean_height  = elevationMap_.at(MEANHEIGHTLAYER,grid_map::Index(i,j));
+      float& RNG          = elevationMap_.at(REFRENCENONGRIDLAYER,grid_map::Index(i,j));
+      float& RTGPC        = elevationMap_.at(GRIDSPOINTCLOUD,grid_map::Index(i,j));
+      float& cat          = elevationMap_.at(CATIGORISATION,grid_map::Index(i,j));
 
       if (min_height==MAX_HEIGHT) // if the cell was not visited. means no information.
       {
@@ -229,12 +214,12 @@ void TraversabilityAnalysis::GroundSegmentation(){
     // #pragma omp parallel for num_threads(5)
     for (int j = 0; j < size_(1); j++)
     {
-      float& segmentation = segmentLayer(i,j);
-      float& cat          = catigorisationLayer(i,j);
-      float& RNG          = RNGLayer(i,j);
+      float& segmentation = elevationMap_.at(SEGMENTATIONLAYER,grid_map::Index(i,j));
+      float& cat          = elevationMap_.at(CATIGORISATION,grid_map::Index(i,j));
+      float& RNG          = elevationMap_.at(REFRENCENONGRIDLAYER,grid_map::Index(i,j));
       bool allZeros = true, allOnes = true;
       Eigen::MatrixXf segs;
-      if (!(i>0 && i < mean_heightLayer.rows()-1 && j>0 && j < mean_heightLayer.cols()-1)) goto AddToNonGrid;
+      if (!(i>0 && i < size_(0)-1 && j>0 && j < size_(1)-1)) goto AddToNonGrid;
 
       kernel_ << -1, -2, -1, 0, 0, 0, 1, 2, 1;// dx
       cat = pow((mean_heightLayer.block(i-1,j-1,3,3).array() * kernel_.array()).sum(),2);
@@ -261,14 +246,7 @@ void TraversabilityAnalysis::GroundSegmentation(){
 
 
 void TraversabilityAnalysis::NonGroundGridClustering(){
-  auto& min_heightLayer = elevationMap_[MINHEIGHTLAYER];
-  auto& max_heightLayer = elevationMap_[MAXHEIGHTLAYER];
-  auto& mean_heightLayer = elevationMap_[MEANHEIGHTLAYER];
-  auto& RTGPCLayer = elevationMap_[GRIDSPOINTCLOUD];
-  auto& RNGLayer = elevationMap_[REFRENCENONGRIDLAYER];
-  auto& segmentLayer = elevationMap_[SEGMENTATIONLAYER];
-  auto& catigorisationLayer = elevationMap_[CATIGORISATION];
-  auto& colorLayer = elevationMap_[COLORLAYER];
+  
   for (size_t i = 0; i < C_N_.size(); i++)
   {
     if (C_N_[i].clustered) continue;
@@ -345,14 +323,7 @@ void TraversabilityAnalysis::NonGroundGridClustering(){
 
 
 void TraversabilityAnalysis::CostCalculation(){
-  auto& min_heightLayer = elevationMap_[MINHEIGHTLAYER];
-  auto& max_heightLayer = elevationMap_[MAXHEIGHTLAYER];
-  auto& mean_heightLayer = elevationMap_[MEANHEIGHTLAYER];
-  auto& RTGPCLayer = elevationMap_[GRIDSPOINTCLOUD];
-  auto& RNGLayer = elevationMap_[REFRENCENONGRIDLAYER];
-  auto& segmentLayer = elevationMap_[SEGMENTATIONLAYER];
-  auto& catigorisationLayer = elevationMap_[CATIGORISATION];
-  auto& colorLayer = elevationMap_[COLORLAYER];
+  
    for (size_t i = 0; i < Clusters_.size(); i++) {
     auto &cluster = Clusters_[i];
     if (cluster.Status == tODELETE) continue;
@@ -405,8 +376,8 @@ void TraversabilityAnalysis::CostCalculation(){
     
     for (auto &&grid : cluster.grids)
     {
-      auto& cat = catigorisationLayer(grid->index(0),grid->index(1));
-      auto& color = colorLayer(grid->index(0),grid->index(1));
+      auto& cat  = elevationMap_.at(CATIGORISATION,grid->index);
+      auto& color = elevationMap_.at(COLORLAYER,grid->index);
       color = cluster.color;
       if (cost == 1)
       {

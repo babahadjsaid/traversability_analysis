@@ -191,11 +191,11 @@ auto qos_imu = rclcpp::QoS(
     ),
     qos_profile_imu);
 
-template<typename Func, typename Type>
-void BenchmarkFunction(Type* self, Func func, std::string function_name)
+template<typename Func, typename Type, typename... Args>
+void BenchmarkFunction(Type* self, Func func, std::string function_name, Args... args)
  {
     const auto methodStartTime = std::chrono::system_clock::now();
-    (self->*func)();
+    (self->*func)(std::forward<Args>(args)...);
     const std::chrono::duration<double> durationOfFunction = std::chrono::system_clock::now() - methodStartTime;
     double durationOfFunctionMS = 1000 * durationOfFunction.count();
     self->BenchmarkTiming_<<"The function " << function_name << " Took " << durationOfFunctionMS <<" ms ";
