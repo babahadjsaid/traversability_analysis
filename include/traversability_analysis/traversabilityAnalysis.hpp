@@ -46,11 +46,51 @@ enum ClusterStatus {
     grid_map::Position Point_mass;
     ClusterStatus Status = nEw;
     int color;
-    std::string Type;
     std::stringstream *ss_;
     Eigen::Vector3f vec;
     PointType p1;
+    std::map<ObjectsCategories, double> category_probabilities;
+    Cluster() {
+        // Initialize with equal probabilities
+        category_probabilities[oBSTACLES] = 0.2;
+        category_probabilities[sLOPE] = 0.2;
+        category_probabilities[pOTHOLE] = 0.2;
+        category_probabilities[nEGATIVESLOPE] = 0.2;
+    }
+    double likelihood(const ObjectsCategories& category) {
+        if (category == oBSTACLES) {
+            return std::exp(-std::pow(H_f - 1.0, 2)) * (Roughness ? 1.0 : 0.5);
+        } else if (category == sLOPE) {
+            return std::exp(-std::pow(H_f - 0.5, 2)) * (Roughness ? 0.5 : 1.0);
+        } else if (category == pOTHOLE) {
+            return std::exp(-std::pow(H_f + 1.0, 2)) * (Roughness ? 1.0 : 0.5);
+        } else if (category == nEGATIVESLOPE) {
+            return std::exp(-std::pow(H_f + 0.5, 2)) * (Roughness ? 0.5 : 1.0);
+        } 
+    }
 
+    void updateProbabilities() {
+        double total_prob = 0.0;
+        for (auto& pair : category_probabilities) {
+            pair.second *= likelihood(pair.first);
+            total_prob += pair.second;
+        }
+        for (auto& pair : category_probabilities) {
+            pair.second /= total_prob; // Normalize
+        }
+    }
+
+    ObjectsCategories getCategory() {
+        double max_prob = 0.0;
+        ObjectsCategories best_category;
+        for (const auto& pair : category_probabilities) {
+            if (pair.second > max_prob) {
+                max_prob = pair.second;
+                best_category = pair.first;
+            }
+        }
+        return best_category;
+    }
 };
 
 struct NonGroundGrid {
@@ -81,10 +121,9 @@ class TraversabilityAnalysis : public ParamServer{
     void FloodFill(grid_map::Index index,grid_map::Index prevIndex, Cluster *cluster);
     bool CalculateRoughness(Cluster &cluster);
     void EstimateAngle(Cluster &cluster);
-    void savePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename);
+    void SavePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename);
     void SaveData();
-    ObjectsCategories checkCategory(std::string &categoryName);
-
+    std::string TraversabilityAnalysis::GetCategoryName(ObjectsCategories categoryName);
  private:
     //Sync
     std::mutex mapMtx_,poseMtx_;

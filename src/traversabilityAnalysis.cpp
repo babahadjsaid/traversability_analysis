@@ -340,19 +340,10 @@ void TraversabilityAnalysis::CostCalculation(){
     if(cluster.mean_height>=0)                        cluster.H_f = std::max(H_d,cluster.mean_height);
       else                                            cluster.H_f = std::min(-H_d,cluster.mean_height);
     
-    if (T_NEG < cluster.H_f && cluster.H_f < T_POS)   cluster.Type = OBSTACLES;
-    
-    if (cluster.H_f >= T_POS)
-    {
-      if (CalculateRoughness(cluster)) cluster.Type = OBSTACLES;
-      else cluster.Type = SLOPE ;
-    } else { // T_NEG >= cluster.H_f 
-      if (CalculateRoughness(cluster)) cluster.Type = POTHOLE;
-      else cluster.Type = NEGATIVESLOPE;
-      }
+    cluster.updateProbabilities();
     
     float cost;
-    switch (checkCategory(cluster.Type))
+    switch (cluster.getCategory())
     {
     case pOTHOLE: 
     case oBSTACLES:
@@ -394,12 +385,12 @@ void TraversabilityAnalysis::CostCalculation(){
 }
 
 
-ObjectsCategories TraversabilityAnalysis::checkCategory(std::string &categoryName){
-  if (categoryName == OBSTACLES) return oBSTACLES;
-  if (categoryName == SLOPE) return sLOPE ;
-  if (categoryName == NEGATIVESLOPE) return nEGATIVESLOPE;
-  if (categoryName == POTHOLE) return pOTHOLE;
-  return gROUND;
+std::string TraversabilityAnalysis::GetCategoryName(ObjectsCategories categoryName){
+  if (categoryName == oBSTACLES) return OBSTACLES;
+  if (categoryName == sLOPE) return SLOPE ;
+  if (categoryName == nEGATIVESLOPE) return NEGATIVESLOPE;
+  if (categoryName == pOTHOLE) return POTHOLE;
+  return GROUND;
 }
 
 
@@ -592,7 +583,7 @@ void TraversabilityAnalysis::EstimateAngle(Cluster &cluster){
     if (dd >5.0) RCLCPP_INFO(get_logger(), "Done estimating angle duration: %fms, ransac: %fms, least:%fms", dd, 1000 * durationR.count(),1000 * durationL.count());
 }
 
-void TraversabilityAnalysis::savePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename) {
+void TraversabilityAnalysis::SavePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename) {
     pcl::PCDWriter writer;
     writer.writeBinaryCompressed(filename, *cloud);
 }
@@ -621,8 +612,8 @@ void TraversabilityAnalysis::SaveData(){
         ss << "data/pcd/pointcloud_"<<now.count()<<".pcd";
         std::string pcdFileName = ss.str();
         
-        savePointCloud(&cluster.pc, pcdFileName);
-        file << pcdFileName<<","<<cluster.Type<<","<<cluster.Roughness<<","<<cluster.angle * (180.0/M_PI)<<","<<cluster.vec[0]
+        SavePointCloud(&cluster.pc, pcdFileName);
+        file << pcdFileName<<","<<GetCategoryName(cluster.getCategory())<<","<<cluster.Roughness<<","<<cluster.angle * (180.0/M_PI)<<","<<cluster.vec[0]
         <<","<<cluster.vec[1]<<","<<cluster.vec[2]<<","<<cluster.p1.x<<","<<cluster.p1.y<<","<<cluster.p1.z<<","<<cluster.ss_->str()<<std::endl;
         delete cluster.ss_;
       }// Customize T_s and T_l
