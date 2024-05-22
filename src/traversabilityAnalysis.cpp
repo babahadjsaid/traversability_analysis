@@ -3,6 +3,7 @@
 
 
 
+
   
 
 namespace traversability_analysis{
@@ -26,7 +27,7 @@ TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclc
   elevationMap_.setFrameId(MAP_FRAME);
   elevationMap_.setGeometry(grid_map::Length(side_length,side_length),CELL_RESOLUTION,grid_map::Position(0,0));
   size_ = elevationMap_.getSize();
-  Colors_ = linspace(0,255,NUM_COLORS);
+  Colors_ = linspace(0,255,5);
 
 }
 void TraversabilityAnalysis::OdometryHandler(nav_msgs::msg::Odometry::SharedPtr poseMsg){
@@ -106,7 +107,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     receivedPose_ = false;
     firstPose_ = false;
   }
-  SaveData();
+  // SaveData();
   C_N_.clear();
   mapMtx_.unlock();
   
@@ -341,19 +342,20 @@ void TraversabilityAnalysis::CostCalculation(){
     if(cluster.mean_height>=0)                        cluster.H_f = std::max(H_d,cluster.mean_height);
       else                                            cluster.H_f = std::min(-H_d,cluster.mean_height);
     
-    if (T_NEG < cluster.H_f && cluster.H_f < T_POS)   cluster.Type = OBSTACLES;
+    if (T_NEG < cluster.H_f && cluster.H_f < T_POS)   cluster.category_count[oBSTACLES] += 1;
     
     if (cluster.H_f >= T_POS)
     {
-      if (CalculateRoughness(cluster)) cluster.Type = OBSTACLES;
-      else cluster.Type = SLOPE ;
+      if (CalculateRoughness(cluster)) cluster.category_count[oBSTACLES] += 1;
+      else cluster.category_count[sLOPE] += 1;
     } else { // T_NEG >= cluster.H_f 
-      if (CalculateRoughness(cluster)) cluster.Type = POTHOLE;
-      else cluster.Type = NEGATIVESLOPE;
+      if (CalculateRoughness(cluster)) cluster.category_count[pOTHOLE] += 1;
+      else cluster.category_count[nEGATIVESLOPE] += 1;;
       }
     
     float cost;
-    switch (checkCategory(cluster.Type))
+    cluster.Type = cluster.getCat();
+    switch (cluster.Type)
     {
     case pOTHOLE: 
     case oBSTACLES:
@@ -374,12 +376,13 @@ void TraversabilityAnalysis::CostCalculation(){
       break;
     }
     
-    
+    std::cout << "the color is "<<Colors_[cluster.Type] << " and type: "<< GetCategoryName(cluster.Type)<<std::endl;
     for (auto &&grid : cluster.grids)
     {
       auto& cat  = elevationMap_.at(CATIGORISATION,grid->index);
       auto& color = elevationMap_.at(COLORLAYER,grid->index);
-      color = cluster.color;
+      color = Colors_[cluster.Type]; // cluster.color;
+      
       if (cost == 1)
       {
         cat = 1.0;
@@ -395,12 +398,12 @@ void TraversabilityAnalysis::CostCalculation(){
 }
 
 
-ObjectsCategories TraversabilityAnalysis::checkCategory(std::string &categoryName){
-  if (categoryName == OBSTACLES) return oBSTACLES;
-  if (categoryName == SLOPE) return sLOPE ;
-  if (categoryName == NEGATIVESLOPE) return nEGATIVESLOPE;
-  if (categoryName == POTHOLE) return pOTHOLE;
-  return gROUND;
+std::string TraversabilityAnalysis::GetCategoryName(ObjectsCategories categoryName){
+  if (categoryName == oBSTACLES) return OBSTACLES;
+  if (categoryName == sLOPE) return SLOPE ;
+  if (categoryName == nEGATIVESLOPE) return NEGATIVESLOPE;
+  if (categoryName == pOTHOLE) return POTHOLE;
+  return GROUND;
 }
 
 
@@ -491,8 +494,7 @@ bool TraversabilityAnalysis::CalculateRoughness(Cluster &cluster){
   std::sort(eigenvalues.data(), eigenvalues.data() + eigenvalues.size());
   
   bool condition = ((eigenvalues[0]!=0) && (eigenvalues[1] / eigenvalues[0] >= T_RATIO));
-  cluster.ss_ = new std::stringstream("");
-  *(cluster.ss_)<< eigenvalues[1]/eigenvalues[0]<<","<< eigenvalues[0] <<","<<eigenvalues[1] <<","<<eigenvalues[2];
+  
   
   cluster.Roughness = !condition;
   return cluster.Roughness;
@@ -583,8 +585,6 @@ void TraversabilityAnalysis::EstimateAngle(Cluster &cluster){
     float as = acos(1 / sqrt(pow(VecC(0), 2) + pow(VecC(1), 2) + 1));
     cluster.angle = as;
     
-    cluster.vec = VecC;
-    cluster.p1 = cluster.pc.points[BestInliers[0]];
     // continue the inclusion of vector and point to be displayed in open 3d
     const std::chrono::duration<double> duration = std::chrono::system_clock::now() - Start;
     const std::chrono::duration<double> durationR = RansacEnd - Start;
@@ -607,7 +607,7 @@ void TraversabilityAnalysis::SaveData(){
     if (file.is_open()) {
       if (!existt)
       {
-      file << "Path,Type,R,angle,H" << std::endl;
+      file << "Path,Type,id,R,angle,H" << std::endl;
       }
       
       for (auto &cluster : Clusters_)
@@ -623,8 +623,8 @@ void TraversabilityAnalysis::SaveData(){
         std::string pcdFileName = ss.str();
         
         savePointCloud(&cluster.pc, pcdFileName);
-        file << pcdFileName<<","<<cluster.Type<<","<<cluster.Roughness<<","<<cluster.angle * (180.0/M_PI)<<","<<cluster.H_f <<std::endl;
-        delete cluster.ss_;
+        file << pcdFileName<<","<<GetCategoryName(cluster.Type)<<","<<cluster.id <<","<<cluster.Roughness<<","<<cluster.angle * (180.0/M_PI)<<","<<cluster.H_f <<std::endl;
+        
       }// Customize T_s and T_l
       }else {
         std::cerr << "Unable to open file: " << csvFileName << std::endl;

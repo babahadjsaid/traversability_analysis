@@ -43,13 +43,31 @@ enum ClusterStatus {
     float min_height,max_height,mean_height=0.0;
     float H_f,angle=0;
     bool Roughness = false;
+    int color;
     grid_map::Position Point_mass;
     ClusterStatus Status = nEw;
-    int color;
-    std::string Type;
-    std::stringstream *ss_;
-    Eigen::Vector3f vec;
-    PointType p1;
+    ObjectsCategories Type;
+    int64_t id;
+    std::map<ObjectsCategories, int> category_count;
+    Cluster(){
+        id = std::chrono::system_clock::now().time_since_epoch().count();
+        category_count[sLOPE] = 0;
+        category_count[nEGATIVESLOPE] = 0;
+        category_count[oBSTACLES] = 0;
+        category_count[pOTHOLE] = 0;
+
+    }
+    ObjectsCategories getCat(){
+        ObjectsCategories cattmp;
+        int max = 0;
+        for (const auto& pair : category_count){
+            if(pair.second >= max){
+                max = pair.second;
+                cattmp = pair.first;
+            }
+        }
+        return cattmp;
+    }
 
 };
 
@@ -64,7 +82,7 @@ struct NonGroundGrid {
 
 class TraversabilityAnalysis : public ParamServer{
  public:
-    long int numFrames_=0;
+    long int numFrames_= 0;
     float avgTime_;
     std::stringstream BenchmarkTiming_;
     /*!
@@ -83,7 +101,7 @@ class TraversabilityAnalysis : public ParamServer{
     void EstimateAngle(Cluster &cluster);
     void savePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename);
     void SaveData();
-    ObjectsCategories checkCategory(std::string &categoryName);
+    std::string GetCategoryName(ObjectsCategories categoryName);
 
  private:
     //Sync
