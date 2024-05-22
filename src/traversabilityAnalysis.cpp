@@ -19,7 +19,7 @@ TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclc
 {
   pointCloudSub_ = create_subscription<sensor_msgs::msg::PointCloud2>(PC_TOPIC, 1,std::bind(&TraversabilityAnalysis::PointCloudHandler, this, std::placeholders::_1));
   robotPoseSubscriber_ = create_subscription<nav_msgs::msg::Odometry>(POSE_TOPIC, qos_imu,std::bind(&TraversabilityAnalysis::OdometryHandler, this, std::placeholders::_1));
-  costMapPub_ = create_publisher<grid_map_msgs::msg::GridMap>(CM_TOPIC, 1); //nav2_msgs::msg::Costmap
+  costMapPub_ = create_publisher<nav2_msgs::msg::Costmap>(CM_TOPIC, 1); //nav2_msgs::msg::Costmap
   
   float side_length = RADIUS * sqrt(2);
   elevationMap_.clearAll();
@@ -97,9 +97,9 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   BenchmarkFunction(this,&TraversabilityAnalysis::CostCalculation,"Cost Calculation");
   std::cout << BenchmarkTiming_.str() << std::endl;
  
-  std::unique_ptr<grid_map_msgs::msg::GridMap> message;
-  message = grid_map::GridMapRosConverter::toMessage(elevationMap_);
-  costMapPub_->publish(std::move(message));
+  nav2_msgs::msg::Costmap message;
+  grid_map::GridMapRosConverter::toCostmap(elevationMap_,CATIGORISATION,0.0,1.0,message);
+  costMapPub_->publish(message);
   elevationMap_.clearAll();
   if (receivedPose_)
   {
@@ -183,6 +183,7 @@ void TraversabilityAnalysis::MapProjection(pcl::PointCloud<PointType>::Ptr point
 
 void TraversabilityAnalysis::GroundSegmentation(){
   auto& mean_heightLayer = elevationMap_[MEANHEIGHTLAYER];
+  
   // #pragma omp parallel for num_threads(5)
   for (int i = 0; i < size_(0); i++)
   {

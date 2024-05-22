@@ -112,7 +112,7 @@ class TraversabilityAnalysis : public ParamServer{
     grid_map::Size size_;
     //Topics 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointCloudSub_;
-    rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr costMapPub_;
+    rclcpp::Publisher<nav2_msgs::msg::Costmap>::SharedPtr costMapPub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr robotPoseSubscriber_;
     
     Eigen::MatrixXf kernel_;
