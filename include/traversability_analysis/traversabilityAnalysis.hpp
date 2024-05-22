@@ -59,14 +59,15 @@ enum ClusterStatus {
     }
     double likelihood(const ObjectsCategories& category) {
         if (category == oBSTACLES) {
-            return std::exp(-std::pow(H_f - 1.0, 2)) * (Roughness ? 1.0 : 0.5);
+            return std::exp(-std::pow(H_f - 0.15, 2)) * (Roughness ? 1.0 : 0.5);
         } else if (category == sLOPE) {
-            return std::exp(-std::pow(H_f - 0.5, 2)) * (Roughness ? 0.5 : 1.0);
+            return std::exp(-std::pow(H_f - (0.15/2), 2)) * (Roughness ? 0.5 : 1.0);
         } else if (category == pOTHOLE) {
-            return std::exp(-std::pow(H_f + 1.0, 2)) * (Roughness ? 1.0 : 0.5);
+            return std::exp(-std::pow(H_f + 0.15, 2)) * (Roughness ? 1.0 : 0.5);
         } else if (category == nEGATIVESLOPE) {
-            return std::exp(-std::pow(H_f + 0.5, 2)) * (Roughness ? 0.5 : 1.0);
+            return std::exp(-std::pow(H_f + (0.15/2), 2)) * (Roughness ? 0.5 : 1.0);
         } 
+        return 0.1;
     }
 
     void updateProbabilities() {
@@ -123,7 +124,7 @@ class TraversabilityAnalysis : public ParamServer{
     void EstimateAngle(Cluster &cluster);
     void SavePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename);
     void SaveData();
-    std::string TraversabilityAnalysis::GetCategoryName(ObjectsCategories categoryName);
+    std::string GetCategoryName(ObjectsCategories categoryName);
  private:
     //Sync
     std::mutex mapMtx_,poseMtx_;

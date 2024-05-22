@@ -105,7 +105,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     receivedPose_ = false;
     firstPose_ = false;
   }
-  // SaveData();
+  SaveData();
   C_N_.clear();
   mapMtx_.unlock();
   
@@ -597,7 +597,7 @@ void TraversabilityAnalysis::SaveData(){
     if (file.is_open()) {
       if (!existt)
       {
-      file << "Path,Type,R,angle,v_x,v_y,v_z,p_x,p_y,p_z,r,1,2,3" << std::endl;
+      file << "Path,Type,R,angle,H" << std::endl;
       }
       
       for (auto &cluster : Clusters_)
@@ -613,8 +613,7 @@ void TraversabilityAnalysis::SaveData(){
         std::string pcdFileName = ss.str();
         
         SavePointCloud(&cluster.pc, pcdFileName);
-        file << pcdFileName<<","<<GetCategoryName(cluster.getCategory())<<","<<cluster.Roughness<<","<<cluster.angle * (180.0/M_PI)<<","<<cluster.vec[0]
-        <<","<<cluster.vec[1]<<","<<cluster.vec[2]<<","<<cluster.p1.x<<","<<cluster.p1.y<<","<<cluster.p1.z<<","<<cluster.ss_->str()<<std::endl;
+        file << pcdFileName<<","<<GetCategoryName(cluster.getCategory())<<","<<cluster.Roughness<<","<<cluster.angle * (180.0/M_PI)<<","<<cluster.H_f <<std::endl;
         delete cluster.ss_;
       }// Customize T_s and T_l
       }else {
