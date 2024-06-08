@@ -22,6 +22,7 @@
 #include <sensor_msgs/msg/point_cloud.hpp>
 #include <grid_map_msgs/msg/grid_map.hpp>
 
+
 //PCL
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -61,7 +62,7 @@ public:
     std::string PC_TOPIC,CM_TOPIC,MAP_FRAME,POSE_TOPIC;
     float RADIUS, CELL_RESOLUTION,T_DIFF,T_HIGH,T_LOW,
     MAX_HEIGHT, MEAN_GRASS, VARIANCE_GRASS, T_PROB, UB,
-    LB, T_RATIO, T_L, T_S, T_NEG, T_POS, T_SEG, T_INLINERS, T_ITERATIONS, MAXANGLE;
+    LB, T_RATIO, T_L, T_S, T_NEG, T_POS, T_SEG, T_INLINERS, T_ITERATIONS, MAXANGLE,GLOBAL_MAP_HEIGHT,GLOBAL_MAP_WIDTH,GLOBAL_MAP_INCR,GLOBAL_MAP_RES;
     int NUM_GRIDS_MIN, NUM_COLORS, MAX_NUM_GRIDS;
     ParamServer(std::string node_name, const rclcpp::NodeOptions & options) : Node(node_name, options)
     {
@@ -145,6 +146,21 @@ public:
 
         declare_parameter("Max_Num_Grids", 10);
         get_parameter("Max_Num_Grids", MAX_NUM_GRIDS);
+
+        declare_parameter("Global_map_resolution", 3.0);
+        get_parameter("Global_map_resolution", GLOBAL_MAP_RES);
+
+        GLOBAL_MAP_RES *= CELL_RESOLUTION;
+        declare_parameter("Global_map_init_height", 50.0);
+        get_parameter("Global_map_init_height", GLOBAL_MAP_HEIGHT);
+        GLOBAL_MAP_HEIGHT =  ceil(GLOBAL_MAP_HEIGHT/GLOBAL_MAP_RES);
+        declare_parameter("Global_map_init_width", 50.0);
+        get_parameter("Global_map_init_width", GLOBAL_MAP_WIDTH);
+        GLOBAL_MAP_WIDTH =  ceil(GLOBAL_MAP_WIDTH/GLOBAL_MAP_RES);
+
+        declare_parameter("Global_map_increment", 20.0);
+        get_parameter("Global_map_increment", GLOBAL_MAP_INCR);
+
 
         usleep(100);
     }

@@ -2,7 +2,7 @@ traversability_analysis:
   ros__parameters:
     pointCloudTopic: "lio_sam/mapping/map_global"
     pose_topic: "odometry/imu"
-    costMapTopic: "map"
+    costMapTopic: "local_map"
 
     map_frame_id: "map"
     circle_radius: 10.0
@@ -29,3 +29,11 @@ traversability_analysis:
     Max_traversable_angle: 55.0
     Num_Colors: 50
     Max_Num_Grids: 10
+
+
+    Global_map_resolution: 2.0
+    Global_map_init_height: 50.0
+    Global_map_init_width: 50.0
+    Global_map_increment: 20.0
+
+

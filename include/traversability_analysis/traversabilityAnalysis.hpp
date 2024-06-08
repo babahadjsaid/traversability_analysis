@@ -17,6 +17,12 @@
 #define SLOPE  "Slope"
 #define NEGATIVESLOPE "Negative Slope"
 
+#define NO_INFORMATION -1
+#define LETHAL_OBSTACLE 100
+#define MAX_NON_OBSTACLE 99
+#define FREE_SPACE 0
+
+
 // utility
 
 #include "traversability_analysis/utility.hpp"
@@ -78,7 +84,37 @@ struct NonGroundGrid {
     bool clustered = false;
     long int idx;
 };
+struct Position {
+    Position() = default;
+    Position(float i, float j){
+        x = i;
+        y = j;
+    }
+    float x,y;
+};
+struct Index {
+    int i,j;
+};
 
+class OccupancyGrid
+{
+    public:
+        explicit OccupancyGrid(int height,int width,float res, Position origin_to_world, int maxcell, int numcell);
+        void Reset();
+        int GetIndexWorldPos(Position pos);
+        int8_t GetCost(int index);
+        int8_t GetCost(int index_i, int index_j);
+        void SetCost(Position pos, int8_t value);
+        void SetCost(int index, int8_t value);
+        void SetCost(int index_i, int index_j, int8_t value);
+        void CheckAndExpandMap(Position robotPos);
+        nav_msgs::msg::OccupancyGrid* Map_;
+        std::mutex MapMtx_;
+    private:
+        int num_cell_to_increment_, max_cell_to_increment_;
+        float num_cell_to_increment_m_;
+
+};
 
 class TraversabilityAnalysis : public ParamServer{
  public:
@@ -101,18 +137,20 @@ class TraversabilityAnalysis : public ParamServer{
     void EstimateAngle(Cluster &cluster);
     void savePointCloud(const pcl::PointCloud<PointType> *cloud, const std::string& filename);
     void SaveData();
+    void PubGlobalMap();
+    void BuildCostMap(nav_msgs::msg::OccupancyGrid::SharedPtr localCostmap );
     std::string GetCategoryName(ObjectsCategories categoryName);
 
  private:
     //Sync
-    std::mutex mapMtx_,poseMtx_;
+    std::mutex mapMtx_,poseMtx_,globalMapMtx_;
 
     //Map
     grid_map::GridMap elevationMap_;
     grid_map::Size size_;
     //Topics 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointCloudSub_;
-    rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr costMapPub_;//nav2_msgs::msg::Costmap
+    rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr costMapPub_,GlobalcostMapPub_;//nav2_msgs::msg::Costmap
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr robotPoseSubscriber_;
     
     Eigen::MatrixXf kernel_;
@@ -127,8 +165,9 @@ class TraversabilityAnalysis : public ParamServer{
     grid_map::Position3  currentPose_,previousPose_,displacement_;
     geometry_msgs::msg::Twist currentTwist_;
     bool receivedPose_, firstPose_;
-    
-   
+    std::string mapFrame;
+    nav_msgs::msg::OccupancyGrid::SharedPtr message_;
+    OccupancyGrid* globalCostmap_;
 
 };
 

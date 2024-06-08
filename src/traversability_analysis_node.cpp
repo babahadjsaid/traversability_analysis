@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     
     
     exec.add_node(TA);
-
+    std::thread loopthread(&traversability_analysis::TraversabilityAnalysis::PubGlobalMap, TA);
 
     exec.spin();
 

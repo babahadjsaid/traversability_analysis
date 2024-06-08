@@ -19,7 +19,8 @@ TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclc
 {
   pointCloudSub_ = create_subscription<sensor_msgs::msg::PointCloud2>(PC_TOPIC, 1,std::bind(&TraversabilityAnalysis::PointCloudHandler, this, std::placeholders::_1));
   robotPoseSubscriber_ = create_subscription<nav_msgs::msg::Odometry>(POSE_TOPIC, qos_imu,std::bind(&TraversabilityAnalysis::OdometryHandler, this, std::placeholders::_1));
-  costMapPub_ = create_publisher<grid_map_msgs::msg::GridMap>(CM_TOPIC, 1); //nav2_msgs::msg::Costmap
+  costMapPub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(CM_TOPIC, 1); //nav2_msgs::msg::Costmap
+  GlobalcostMapPub_ = create_publisher<nav_msgs::msg::OccupancyGrid>("/map", 1); //nav2_msgs::msg::Costmap
   
   float side_length = RADIUS * sqrt(2);
   elevationMap_.clearAll();
@@ -28,7 +29,16 @@ TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclc
   elevationMap_.setGeometry(grid_map::Length(side_length,side_length),CELL_RESOLUTION,grid_map::Position(0,0));
   size_ = elevationMap_.getSize();
   Colors_ = linspace(0,255,5);
-
+  message_ = std::make_shared<nav_msgs::msg::OccupancyGrid>();
+  message_->data.resize(size_(0) * size_(1),NO_INFORMATION);
+  message_->info.height = size_(0);
+  message_->info.width = size_(1);
+  message_->info.resolution = CELL_RESOLUTION;
+  Position origin = {- (size_(1)/2.0f) * CELL_RESOLUTION,- (size_(0)/2.0f) * CELL_RESOLUTION};
+  int num_max_cell = (size_(1)) * CELL_RESOLUTION/GLOBAL_MAP_RES;
+  globalCostmap_ = new OccupancyGrid(GLOBAL_MAP_HEIGHT,GLOBAL_MAP_WIDTH,GLOBAL_MAP_RES,origin,num_max_cell,GLOBAL_MAP_INCR);
+  
+  
 }
 void TraversabilityAnalysis::OdometryHandler(nav_msgs::msg::Odometry::SharedPtr poseMsg){
   poseMtx_.lock();
@@ -56,6 +66,7 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     
   }
   poseMtx_.unlock();
+  mapFrame = pointCloudMsg->header.frame_id;
   if (abs(currentTwist_.angular.x) >= 0.6|| abs(currentTwist_.angular.y) >= 0.6 || abs(currentTwist_.angular.z) >= 0.6 )
   {
     std::cout << "A frame is being ignored due to big vibrations " <<std::endl;
@@ -95,13 +106,14 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   BenchmarkFunction(this,&TraversabilityAnalysis::GroundSegmentation,"Ground Segmentation");
   BenchmarkFunction(this,&TraversabilityAnalysis::NonGroundGridClustering, "Non-Ground GridClustering ");
   BenchmarkFunction(this,&TraversabilityAnalysis::CostCalculation,"Cost Calculation");
+  
+  BenchmarkFunction(this,&TraversabilityAnalysis::BuildCostMap,"Build local Costmap",message_);
+  
   std::cout << BenchmarkTiming_.str() << std::endl;
  
   
   //grid_map::GridMapRosConverter::toCostmap(elevationMap_,CATIGORISATION,0.0,1.0,message);
-  std::unique_ptr<grid_map_msgs::msg::GridMap> message;
-  message = grid_map::GridMapRosConverter::toMessage(elevationMap_);
-  costMapPub_->publish(*message);
+  costMapPub_->publish(*message_);
   elevationMap_.clearAll();
   if (receivedPose_)
   {
@@ -139,7 +151,7 @@ void TraversabilityAnalysis::MapProjection(pcl::PointCloud<PointType>::Ptr point
   {
     auto& point = pointCloud->points[i];
     grid_map::Index index;
-    grid_map::Position position(point.x, point.y);  
+    grid_map::Position position(point.y, -point.x);  
     if (!elevationMap_.getIndex(position, index) || point.z >MAX_HEIGHT) {
       continue;
     }
@@ -220,6 +232,7 @@ void TraversabilityAnalysis::GroundSegmentation(){
     for (int j = 0; j < size_(1); j++)
     {
       float& segmentation = elevationMap_.at(SEGMENTATIONLAYER,grid_map::Index(i,j));
+      if (segmentation == 2) continue;
       float& cat          = elevationMap_.at(CATIGORISATION,grid_map::Index(i,j));
       float& RNG          = elevationMap_.at(REFRENCENONGRIDLAYER,grid_map::Index(i,j));
       bool allZeros = true, allOnes = true;
@@ -234,6 +247,8 @@ void TraversabilityAnalysis::GroundSegmentation(){
       cat = 0.5-(0.5 / exp(cat));
        
       AddToNonGrid:
+      
+      
       if (segmentation==1)
       {
         grid_map::Index idx(i,j);
@@ -265,11 +280,14 @@ void TraversabilityAnalysis::NonGroundGridClustering(){
       for (auto &&grid : new_cluster.grids)
       {
         auto& segmentation = elevationMap_.at(SEGMENTATIONLAYER,grid->index);
-        auto& RNG = elevationMap_.at(REFRENCENONGRIDLAYER,grid->index);
-        auto& colorGrid = elevationMap_.at(COLORLAYER,grid->index);
+        auto& RNG          = elevationMap_.at(REFRENCENONGRIDLAYER,grid->index);
+        auto& colorGrid    = elevationMap_.at(COLORLAYER,grid->index);
+        float& cat         = elevationMap_.at(CATIGORISATION,grid->index);
         segmentation = 0;
         RNG = -1;
         colorGrid = 0;
+        cat = 0.8;
+        grid->clustered = true;
       }
       continue;
     }
@@ -396,6 +414,35 @@ void TraversabilityAnalysis::CostCalculation(){
     }
     
   }
+
+
+}
+
+
+void TraversabilityAnalysis::BuildCostMap(nav_msgs::msg::OccupancyGrid::SharedPtr localCostmap ){
+  
+   localCostmap->header = std_msgs::msg::Header();
+   localCostmap->header.frame_id = mapFrame;
+   localCostmap->info.origin.position.x = currentPose_.x() - (size_(1)/2.0) * CELL_RESOLUTION;
+   localCostmap->info.origin.position.y = currentPose_.y() - (size_(0)/2.0) * CELL_RESOLUTION;
+   
+   for (size_t i = 0; i < size_(0); i++)
+   {
+    for (size_t j = 0; j < size_(1); j++)
+      {
+        float& segmentation = elevationMap_.at(SEGMENTATIONLAYER,grid_map::Index(i,j));
+        float& cat          = elevationMap_.at(CATIGORISATION,grid_map::Index(i,j));
+        auto& cost = localCostmap->data.at((size_(0)-i-1) * size_(1) + j);
+        if (segmentation == 2) cost = NO_INFORMATION; 
+        if (segmentation == 1) cost = LETHAL_OBSTACLE;
+        if (segmentation == 0) cost = cat * MAX_NON_OBSTACLE;
+        Position pos;
+        pos.x = localCostmap->info.origin.position.x +        j       * CELL_RESOLUTION;
+        pos.y = localCostmap->info.origin.position.y + (size_(0)-i-1) * CELL_RESOLUTION;
+        globalCostmap_->SetCost(pos, cost);
+      }
+   }
+   
 
 
 }
@@ -634,6 +681,155 @@ void TraversabilityAnalysis::SaveData(){
     }
 
     
+}
+
+void TraversabilityAnalysis::PubGlobalMap(){
+    rclcpp::Rate rate(3);
+    while (rclcpp::ok()){
+        globalCostmap_->MapMtx_.lock();
+        GlobalcostMapPub_->publish(*globalCostmap_->Map_);
+        globalCostmap_->MapMtx_.unlock();
+        
+        globalCostmap_->CheckAndExpandMap(Position(currentPose_.x(),currentPose_.y()));
+        rate.sleep();
+    }
+}
+
+
+
+OccupancyGrid::OccupancyGrid(int height,int width,float res, Position origin_to_world,int maxcell, int numcell)
+
+{
+  Map_  = new nav_msgs::msg::OccupancyGrid();
+  Map_->header.frame_id = "odom";
+  Map_->data.resize(height * width, NO_INFORMATION);
+  Map_->info.height = height ;
+  Map_->info.width = width;
+  Map_->info.resolution = res;
+  Map_->info.origin.position.x = origin_to_world.x;
+  Map_->info.origin.position.y = origin_to_world.y;
+  num_cell_to_increment_= numcell;
+  max_cell_to_increment_ = maxcell;
+  num_cell_to_increment_m_ = num_cell_to_increment_ * res;
+}
+
+
+int OccupancyGrid::GetIndexWorldPos(Position pos){
+  int i = (pos.x - Map_->info.origin.position.x )/ Map_->info.resolution;
+  int j = (pos.y - Map_->info.origin.position.y) / Map_->info.resolution;
+  return j*Map_->info.width + i;
+}
+
+
+int8_t OccupancyGrid::GetCost(int index){
+  return Map_->data[index];
+}
+
+
+int8_t OccupancyGrid::GetCost(int index_i, int index_j){
+  return Map_->data[index_i + Map_->info.width * index_j];
+}
+
+
+void OccupancyGrid::SetCost(int index, int8_t value){
+  if (index > Map_->info.height * Map_->info.width || index<0)
+    {
+      std::cout<< "error requested cell out of bound: index= "<<index<<std::endl;
+      return;
+    }
+  MapMtx_.lock();
+  Map_->data[index] = value;// std::max(Map_->data[index], value);//(Map_->data[index] != NO_INFORMATION)  ? std::min(Map_->data[index], value) : value;
+  MapMtx_.unlock();
+}
+
+void OccupancyGrid::SetCost(Position pos, int8_t value){
+  
+  MapMtx_.lock();
+  int index = GetIndexWorldPos(pos);
+  if (!(index > Map_->info.height * Map_->info.width || index<0)) Map_->data[index] =  value;//std::max(Map_->data[index], value); //(Map_->data[index] != NO_INFORMATION)  ? std::min(Map_->data[index], value) : value;
+  else{
+    ;//std::cout<< "error requested cell out of bound: index= "<<index<<std::endl;
+  }
+  MapMtx_.unlock();
+}
+
+void OccupancyGrid::SetCost(int index_i, int index_j, int8_t value){
+  if (index_i>= Map_->info.width || index_j>= Map_->info.height || index_i<0 || index_j<0)
+  {
+    std::cout<< "error requested cell out of bound: i= "<<index_i<<" j= "<<index_j<<std::endl;
+    return;
+  }
+  
+  MapMtx_.lock();
+  
+  Map_->data[index_i + Map_->info.width * index_j] =  value;//std::max(Map_->data[index_i + Map_->info.width * index_j], value);//(Map_->data[index_i + Map_->info.width * index_j] != NO_INFORMATION)  ? std::min(Map_->data[index_i + Map_->info.width * index_j], value) : value;
+  MapMtx_.unlock();
+}
+
+
+void OccupancyGrid::CheckAndExpandMap(Position robotPos){
+  if (Map_->data.empty()) return;
+  int i = (robotPos.x - Map_->info.origin.position.x )/ Map_->info.resolution;
+  int j = (robotPos.y - Map_->info.origin.position.y) / Map_->info.resolution;
+  nav_msgs::msg::OccupancyGrid* tmp = new nav_msgs::msg::OccupancyGrid();
+  tmp->info = Map_->info;
+  tmp->header = Map_->header;
+  bool origin_x_changed = false, origin_y_changed = false, any_updates=false;
+  int new_width = Map_->info.width, new_height = Map_->info.height;
+
+  if (i+max_cell_to_increment_ >= Map_->info.width)
+  {
+    new_width = Map_->info.width + num_cell_to_increment_;
+    any_updates = true;
+    }
+  if (i-max_cell_to_increment_ <= 0)
+  {
+    new_width = Map_->info.width + num_cell_to_increment_;
+    origin_x_changed = any_updates = true;
+    }
+  if (j+max_cell_to_increment_ >= Map_->info.height)
+  {
+    new_height = Map_->info.height + num_cell_to_increment_;
+    any_updates = true;
+    }
+  if (j-max_cell_to_increment_ <= 0){
+    new_height = Map_->info.height + num_cell_to_increment_;
+    origin_y_changed = any_updates = true;
+    }
+  if(!any_updates){
+    delete tmp;
+    return;
+  }
+  if (origin_x_changed)
+  {
+    tmp->info.origin.position.x -= num_cell_to_increment_m_;
+  }
+  if (origin_y_changed)
+  {
+    tmp->info.origin.position.y -= num_cell_to_increment_m_;
+  }
+  tmp->data.resize(new_width * new_height , NO_INFORMATION); 
+  tmp->info.height = new_height;
+  tmp->info.width = new_width;
+
+
+  MapMtx_.lock();
+  for (size_t j = 0; j < Map_->info.height; j++)
+  {
+    int row = j * tmp->info.width;
+    if (origin_y_changed) row+= num_cell_to_increment_ * tmp->info.width;
+    for (size_t i = 0; i < Map_->info.width; i++)
+      {
+        int index = row + i;
+        if (origin_x_changed) index+= num_cell_to_increment_;
+        tmp->data[index] = GetCost(i,j);
+      }
+  }
+  
+  delete Map_;
+  Map_ = tmp;
+  MapMtx_.unlock();
+  
 }
 
 
