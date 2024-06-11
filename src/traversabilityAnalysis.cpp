@@ -37,7 +37,9 @@ TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclc
   Position origin = {- (size_(1)/2.0f) * CELL_RESOLUTION,- (size_(0)/2.0f) * CELL_RESOLUTION};
   int num_max_cell = (size_(1)) * CELL_RESOLUTION/GLOBAL_MAP_RES;
   globalCostmap_ = new OccupancyGrid(GLOBAL_MAP_HEIGHT,GLOBAL_MAP_WIDTH,GLOBAL_MAP_RES,origin,num_max_cell,GLOBAL_MAP_INCR);
-  
+  state_ = Eigen::VectorXd(3);
+  state_ << 0,0,0;
+  covariance_ = Eigen::MatrixXd::Identity(3, 3);
   
 }
 void TraversabilityAnalysis::OdometryHandler(nav_msgs::msg::Odometry::SharedPtr poseMsg){
@@ -54,20 +56,38 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
   auto currentPointCloudTime = rclcpp::Time(pointCloudMsg->header.stamp,RCL_ROS_TIME);
   if (abs(currentPointCloudTime.seconds() - oldestPoseTime.seconds()) <0.01 ) {
     
-    currentPose_.x() = currentOdom_.pose.pose.position.x;
-    currentPose_.y() = currentOdom_.pose.pose.position.y;
+    
     tf2::Quaternion orientation;
     tf2::fromMsg(currentOdom_.pose.pose.orientation, orientation);
     double roll, pitch, yaw;
     tf2::Matrix3x3(orientation).getRPY(roll, pitch, yaw);
-    currentPose_.z() = yaw ;
+    
     currentTwist_= currentOdom_.twist.twist;
+    Eigen::VectorXd z(3);
+    z << currentOdom_.pose.pose.position.x, currentOdom_.pose.pose.position.y, yaw;
+    
+    Eigen::MatrixXd R(3, 3);
+    int index=-1;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            covariance_(i, j) = currentOdom_.pose.covariance[++index];
+        }
+    }
+    // Eigen::MatrixXd Q = Eigen::MatrixXd::Identity(3, 3) * 0.01;
+    // state_ = state_;
+    // covariance_ = covariance_ + Q;
+    // Eigen::MatrixXd K = covariance_ * (covariance_ + R).inverse();
+    // state_ = state_ + K * (z - state_);
+    // covariance_ = (Eigen::MatrixXd::Identity(3, 3) - K) * covariance_;
+    currentPose_.x() = currentOdom_.pose.pose.position.x;
+    currentPose_.y() = currentOdom_.pose.pose.position.y;
+    currentPose_.z() = yaw;
     receivedPose_ = true;
     
   }
   poseMtx_.unlock();
   mapFrame = pointCloudMsg->header.frame_id;
-  if (abs(currentTwist_.angular.x) >= 0.6|| abs(currentTwist_.angular.y) >= 0.6 || abs(currentTwist_.angular.z) >= 0.6 )
+  if (abs(currentTwist_.angular.x) >= 0.4|| abs(currentTwist_.angular.y) >= 0.4 || abs(currentTwist_.angular.z) >= 0.4 )
   {
     std::cout << "A frame is being ignored due to big vibrations " <<std::endl;
     previousPose_ = currentPose_;

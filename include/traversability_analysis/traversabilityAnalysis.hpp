@@ -168,6 +168,8 @@ class TraversabilityAnalysis : public ParamServer{
     std::string mapFrame;
     nav_msgs::msg::OccupancyGrid::SharedPtr message_;
     OccupancyGrid* globalCostmap_;
+    Eigen::VectorXd state_;
+    Eigen::MatrixXd covariance_;
 
 };
 
