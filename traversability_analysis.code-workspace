@@ -91,7 +91,8 @@
 			"*.ipp": "cpp",
 			"*.inc": "cpp",
 			"filesystem": "cpp",
-			"eigenvalues": "cpp"
+			"eigenvalues": "cpp",
+			"*.txx": "cpp"
 		},
 		"cmake.sourceDirectory": "/media/baba/New Volume/internships/LS2N/intern/SourceCode/src/src/LIO-SAM",
 		"python.autoComplete.extraPaths": [

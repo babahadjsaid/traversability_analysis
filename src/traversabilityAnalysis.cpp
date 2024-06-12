@@ -37,9 +37,7 @@ TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclc
   Position origin = {- (size_(1)/2.0f) * CELL_RESOLUTION,- (size_(0)/2.0f) * CELL_RESOLUTION};
   int num_max_cell = (size_(1)) * CELL_RESOLUTION/GLOBAL_MAP_RES;
   globalCostmap_ = new OccupancyGrid(GLOBAL_MAP_HEIGHT,GLOBAL_MAP_WIDTH,GLOBAL_MAP_RES,origin,num_max_cell,GLOBAL_MAP_INCR);
-  state_ = Eigen::VectorXd(3);
-  state_ << 0,0,0;
-  covariance_ = Eigen::MatrixXd::Identity(3, 3);
+  
   
 }
 void TraversabilityAnalysis::OdometryHandler(nav_msgs::msg::Odometry::SharedPtr poseMsg){
@@ -63,22 +61,13 @@ void TraversabilityAnalysis::PointCloudHandler(sensor_msgs::msg::PointCloud2::Sh
     tf2::Matrix3x3(orientation).getRPY(roll, pitch, yaw);
     
     currentTwist_= currentOdom_.twist.twist;
-    Eigen::VectorXd z(3);
-    z << currentOdom_.pose.pose.position.x, currentOdom_.pose.pose.position.y, yaw;
     
-    Eigen::MatrixXd R(3, 3);
     int index=-1;
-    for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 3; ++j) {
-            covariance_(i, j) = currentOdom_.pose.covariance[++index];
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            covarianceMatrix_(i, j) = currentOdom_.pose.covariance[++index];
         }
     }
-    // Eigen::MatrixXd Q = Eigen::MatrixXd::Identity(3, 3) * 0.01;
-    // state_ = state_;
-    // covariance_ = covariance_ + Q;
-    // Eigen::MatrixXd K = covariance_ * (covariance_ + R).inverse();
-    // state_ = state_ + K * (z - state_);
-    // covariance_ = (Eigen::MatrixXd::Identity(3, 3) - K) * covariance_;
     currentPose_.x() = currentOdom_.pose.pose.position.x;
     currentPose_.y() = currentOdom_.pose.pose.position.y;
     currentPose_.z() = yaw;
@@ -439,32 +428,9 @@ void TraversabilityAnalysis::CostCalculation(){
 }
 
 
-void TraversabilityAnalysis::BuildCostMap(nav_msgs::msg::OccupancyGrid::SharedPtr localCostmap ){
-  
-   localCostmap->header = std_msgs::msg::Header();
-   localCostmap->header.frame_id = mapFrame;
-   localCostmap->info.origin.position.x = currentPose_.x() - (size_(1)/2.0) * CELL_RESOLUTION;
-   localCostmap->info.origin.position.y = currentPose_.y() - (size_(0)/2.0) * CELL_RESOLUTION;
-   
-   for (size_t i = 0; i < size_(0); i++)
-   {
-    for (size_t j = 0; j < size_(1); j++)
-      {
-        float& segmentation = elevationMap_.at(SEGMENTATIONLAYER,grid_map::Index(i,j));
-        float& cat          = elevationMap_.at(CATIGORISATION,grid_map::Index(i,j));
-        auto& cost = localCostmap->data.at((size_(0)-i-1) * size_(1) + j);
-        if (segmentation == 2) cost = NO_INFORMATION; 
-        if (segmentation == 1) cost = LETHAL_OBSTACLE;
-        if (segmentation == 0) cost = cat * MAX_NON_OBSTACLE;
-        Position pos;
-        pos.x = localCostmap->info.origin.position.x +        j       * CELL_RESOLUTION;
-        pos.y = localCostmap->info.origin.position.y + (size_(0)-i-1) * CELL_RESOLUTION;
-        globalCostmap_->SetCost(pos, cost);
-      }
-   }
-   
 
-
+float OccupancyGrid::cumulativeDistributionFunction(float x, float mean, float standardDeviation) {
+  return 0.5 * erfc(-(x - mean) / (standardDeviation * sqrt(2.0)));
 }
 
 
@@ -668,40 +634,32 @@ void TraversabilityAnalysis::savePointCloud(const pcl::PointCloud<PointType> *cl
     writer.writeBinaryCompressed(filename, *cloud);
 }
 
-void TraversabilityAnalysis::SaveData(){
-    std::string csvFileName = "data/data.csv";
-    auto existt = std::filesystem::exists(csvFileName);
-    
-    std::ofstream file(csvFileName, std::ios::app);
-
-    if (file.is_open()) {
-      if (!existt)
-      {
-      file << "Path,Type,id,R,angle,H" << std::endl;
-      }
-      
-      for (auto &cluster : Clusters_)
-      {
-        if (cluster.pc.size()<350 || cluster.Status==tODELETE)
-        {
-          continue;
-        }
-        
-        std::stringstream ss;
-        auto now = std::chrono::system_clock::now().time_since_epoch();
-        ss << "data/pcd/pointcloud_"<<now.count()<<".pcd";
-        std::string pcdFileName = ss.str();
-        
-        savePointCloud(&cluster.pc, pcdFileName);
-        file << pcdFileName<<","<<GetCategoryName(cluster.Type)<<","<<cluster.id <<","<<cluster.Roughness<<","<<cluster.angle * (180.0/M_PI)<<","<<cluster.H_f <<std::endl;
-        
-      }// Customize T_s and T_l
-      }else {
-        std::cerr << "Unable to open file: " << csvFileName << std::endl;
-    }
-
-    
-}
+// void TraversabilityAnalysis::SaveData(){
+//     std::string csvFileName = "data/data.csv";
+//     auto existt = std::filesystem::exists(csvFileName);  
+//     std::ofstream file(csvFileName, std::ios::app);
+//     if (file.is_open()) {
+//       if (!existt)
+//       {
+//       file << "Path,Type,id,R,angle,H" << std::endl;
+//       }   
+//       for (auto &cluster : Clusters_)
+//       {
+//         if (cluster.pc.size()<350 || cluster.Status==tODELETE)
+//         {
+//           continue;
+//         }     
+//         std::stringstream ss;
+//         auto now = std::chrono::system_clock::now().time_since_epoch();
+//         ss << "data/pcd/pointcloud_"<<now.count()<<".pcd";
+//         std::string pcdFileName = ss.str();      
+//         savePointCloud(&cluster.pc, pcdFileName);
+//         file << pcdFileName<<","<<GetCategoryName(cluster.Type)<<","<<cluster.id <<","<<cluster.Roughness<<","<<cluster.angle * (180.0/M_PI)<<","<<cluster.H_f <<std::endl;      
+//       }// Customize T_s and T_l
+//       }else {
+//         std::cerr << "Unable to open file: " << csvFileName << std::endl;
+//     }  
+// }
 
 void TraversabilityAnalysis::PubGlobalMap(){
     rclcpp::Rate rate(3);
@@ -715,6 +673,89 @@ void TraversabilityAnalysis::PubGlobalMap(){
     }
 }
 
+void TraversabilityAnalysis::BuildCostMap(nav_msgs::msg::OccupancyGrid::SharedPtr localCostmap ){
+  
+   localCostmap->header = std_msgs::msg::Header();
+   localCostmap->header.frame_id = mapFrame;
+   localCostmap->info.origin.position.x = currentPose_.x() - (size_(1)/2.0) * CELL_RESOLUTION;
+   localCostmap->info.origin.position.y = currentPose_.y() - (size_(0)/2.0) * CELL_RESOLUTION;
+   std::vector<Eigen::Vector3d> relativeIndices = globalCostmap_->getRelativeEllipseIndices(covarianceMatrix_);
+   for (size_t i = 0; i < size_(0); i++)
+   {
+    for (size_t j = 0; j < size_(1); j++)
+      {
+        float& segmentation = elevationMap_.at(SEGMENTATIONLAYER,grid_map::Index(i,j));
+        float& cat          = elevationMap_.at(CATIGORISATION,grid_map::Index(i,j));
+        auto& cost = localCostmap->data.at((size_(0)-i-1) * size_(1) + j);
+        if (segmentation == 2) cost = NO_INFORMATION; 
+        if (segmentation == 1) cost = LETHAL_OBSTACLE;
+        if (segmentation == 0) cost = cat * MAX_NON_OBSTACLE;
+        Position pos;
+        pos.x = localCostmap->info.origin.position.x +        j       * CELL_RESOLUTION;
+        pos.y = localCostmap->info.origin.position.y + (size_(0)-i-1) * CELL_RESOLUTION;
+        for (const auto& relIdx : relativeIndices) {
+                Position globalPos;
+                pos.x += relIdx.x() * globalCostmap_->Map_->info.resolution;
+                pos.y += relIdx.y() * globalCostmap_->Map_->info.resolution;
+                globalCostmap_->UpdateCell(pos, cost,relIdx.z());
+                
+            }
+      }
+   }
+   
+
+
+}
+
+std::vector<Eigen::Vector3d> OccupancyGrid::getRelativeEllipseIndices(Eigen::Matrix2d covarianceMatrix) {
+    double halfResolution = 0.5 * Map_->info.resolution , uncertaintyFactor = 2.486;  // sqrt(6.18)
+    const float minimalWeight = std::numeric_limits<float>::epsilon() * static_cast<float>(2.0);
+    Eigen::EigenSolver<Eigen::Matrix2d> solver(covarianceMatrix);
+    Eigen::Array2d eigenvalues(solver.eigenvalues().real().cwiseAbs());
+    Eigen::Matrix2d invCovariance = covarianceMatrix.inverse();
+    Eigen::Array2d::Index maxEigenvalueIndex;
+    eigenvalues.maxCoeff(&maxEigenvalueIndex);
+    Eigen::Array2d::Index minEigenvalueIndex;
+    
+    maxEigenvalueIndex == Eigen::Array2d::Index(0) ? minEigenvalueIndex = 1 : minEigenvalueIndex = 0;
+    Eigen::Array2d lengths =  2 * uncertaintyFactor *eigenvalues.sqrt() ;
+    Eigen::Matrix2d rotationMatrix = solver.eigenvectors().real();
+    float maxStandardDeviation = sqrt(eigenvalues(maxEigenvalueIndex));
+    float minStandardDeviation = sqrt(eigenvalues(minEigenvalueIndex));
+    std::vector<Eigen::Vector3d> relativeIndices;
+    // Calculate the bounding box of the ellipse
+    double maxLength = std::max(lengths.x(), lengths.y());
+    int maxOffset = std::ceil(maxLength / Map_->info.resolution);
+
+    // Iterate over the bounding box
+    for (int i = -maxOffset; i <= maxOffset; ++i) {
+        for (int j = -maxOffset; j <= maxOffset; ++j) {
+            // Calculate the cell's position relative to the ellipse center
+            Eigen::Vector2d relativePos(i * Map_->info.resolution, j * Map_->info.resolution);
+            float probability1 = cumulativeDistributionFunction(relativePos.x() + halfResolution, 0.0, maxStandardDeviation) -
+                           cumulativeDistributionFunction(relativePos.x() - halfResolution, 0.0, maxStandardDeviation);
+            float probability2 = cumulativeDistributionFunction(relativePos.y() + halfResolution, 0.0, minStandardDeviation) -
+                                cumulativeDistributionFunction(relativePos.y() - halfResolution, 0.0, minStandardDeviation);
+
+            const float weight = std::max(minimalWeight, probability1 * probability2);
+
+            // Transform the position to the ellipse's coordinate system
+            Eigen::Vector2d transformedPos = rotationMatrix.transpose() * relativePos;
+
+
+            // Check if the cell is inside the ellipse
+            double ellipseValue = (transformedPos.x() * transformedPos.x()) / (lengths.x() * lengths.x()) +
+                                  (transformedPos.y() * transformedPos.y()) / (lengths.y() * lengths.y());
+
+            if (ellipseValue <= 1.0) {
+                relativeIndices.emplace_back(i, j,weight);
+            }
+        }
+    }
+
+    return relativeIndices;
+}
+
 
 
 OccupancyGrid::OccupancyGrid(int height,int width,float res, Position origin_to_world,int maxcell, int numcell)
@@ -723,6 +764,7 @@ OccupancyGrid::OccupancyGrid(int height,int width,float res, Position origin_to_
   Map_  = new nav_msgs::msg::OccupancyGrid();
   Map_->header.frame_id = "odom";
   Map_->data.resize(height * width, NO_INFORMATION);
+  Variance_.resize(height , width);
   Map_->info.height = height ;
   Map_->info.width = width;
   Map_->info.resolution = res;
@@ -733,6 +775,24 @@ OccupancyGrid::OccupancyGrid(int height,int width,float res, Position origin_to_
   num_cell_to_increment_m_ = num_cell_to_increment_ * res;
 }
 
+void OccupancyGrid::UpdateCell(Position pos, int8_t cost,double weight){
+    int8_t oldcost = GetCost(pos);
+    if (oldcost<-1) return;
+    if (oldcost == -1)
+    {
+      SetCost(pos,cost);
+      SetWeight(pos,weight);
+      return;
+    }
+    
+    double oldweight = GetWeight(pos);
+
+    int8_t newCost = (int) ((weight*oldcost + oldweight * cost)/(oldweight + weight));
+    double newweight = (weight * oldweight)/(weight + oldweight);
+    SetCost(pos,newCost);
+    SetWeight(pos,newweight);
+
+}
 
 int OccupancyGrid::GetIndexWorldPos(Position pos){
   int i = (pos.x - Map_->info.origin.position.x )/ Map_->info.resolution;
@@ -750,6 +810,12 @@ int8_t OccupancyGrid::GetCost(int index_i, int index_j){
   return Map_->data[index_i + Map_->info.width * index_j];
 }
 
+int8_t OccupancyGrid::GetCost(Position pos){
+  
+  int index = GetIndexWorldPos(pos);
+  if (!(index > Map_->info.height * Map_->info.width || index<0)) return Map_->data[index];
+  return -2;
+}
 
 void OccupancyGrid::SetCost(int index, int8_t value){
   if (index > Map_->info.height * Map_->info.width || index<0)
@@ -766,7 +832,7 @@ void OccupancyGrid::SetCost(Position pos, int8_t value){
   
   MapMtx_.lock();
   int index = GetIndexWorldPos(pos);
-  if (!(index > Map_->info.height * Map_->info.width || index<0)) Map_->data[index] =  value;//std::max(Map_->data[index], value); //(Map_->data[index] != NO_INFORMATION)  ? std::min(Map_->data[index], value) : value;
+  if (!(index > Map_->info.height * Map_->info.width || index<0)) Map_->data[index] = value;
   else{
     ;//std::cout<< "error requested cell out of bound: index= "<<index<<std::endl;
   }
@@ -786,12 +852,26 @@ void OccupancyGrid::SetCost(int index_i, int index_j, int8_t value){
   MapMtx_.unlock();
 }
 
+double OccupancyGrid::GetWeight(Position pos){
+  int i = (pos.x - Map_->info.origin.position.x )/ Map_->info.resolution;
+  int j = (pos.y - Map_->info.origin.position.y) / Map_->info.resolution;
+  return Variance_(Variance_.rows() - j -1,i);
+}
+
+void OccupancyGrid::SetWeight(Position pos, double value){
+  int i = (pos.x - Map_->info.origin.position.x )/ Map_->info.resolution;
+  int j = (pos.y - Map_->info.origin.position.y) / Map_->info.resolution;
+  MapMtx_.lock();
+  Variance_(Variance_.rows() - j -1,i) = value;
+  MapMtx_.unlock();
+}
 
 void OccupancyGrid::CheckAndExpandMap(Position robotPos){
   if (Map_->data.empty()) return;
   int i = (robotPos.x - Map_->info.origin.position.x )/ Map_->info.resolution;
   int j = (robotPos.y - Map_->info.origin.position.y) / Map_->info.resolution;
   nav_msgs::msg::OccupancyGrid* tmp = new nav_msgs::msg::OccupancyGrid();
+  Eigen::MatrixXd tmpVar;
   tmp->info = Map_->info;
   tmp->header = Map_->header;
   bool origin_x_changed = false, origin_y_changed = false, any_updates=false;
@@ -828,21 +908,23 @@ void OccupancyGrid::CheckAndExpandMap(Position robotPos){
   {
     tmp->info.origin.position.y -= num_cell_to_increment_m_;
   }
-  tmp->data.resize(new_width * new_height , NO_INFORMATION); 
+  tmp->data.resize(new_width * new_height , NO_INFORMATION);
+  tmpVar.resize(new_height,new_width);
   tmp->info.height = new_height;
   tmp->info.width = new_width;
 
 
   MapMtx_.lock();
+  int incrY = 0;
+  if (origin_y_changed) incrY= num_cell_to_increment_ ;
+  int incrX = 0;
+  if (origin_x_changed) incrX= num_cell_to_increment_;
   for (size_t j = 0; j < Map_->info.height; j++)
   {
-    int row = j * tmp->info.width;
-    if (origin_y_changed) row+= num_cell_to_increment_ * tmp->info.width;
     for (size_t i = 0; i < Map_->info.width; i++)
       {
-        int index = row + i;
-        if (origin_x_changed) index+= num_cell_to_increment_;
-        tmp->data[index] = GetCost(i,j);
+        tmp->data[(j + incrY) * tmp->info.width + i + incrX] = GetCost(i,j);
+        tmpVar((j + incrY) , i + incrX) = Variance_(i,j);
       }
   }
   
@@ -857,7 +939,16 @@ void OccupancyGrid::CheckAndExpandMap(Position robotPos){
 
 }// End namespace 
 
-
+// if (value ==-1)
+//     {
+//       Map_->data[index] = -1;
+//     }else if (value>=61)
+//     {
+//       Map_->data[index] = 100;
+//     }else
+//     {
+//       Map_->data[index] = 0;
+//     }
 
 // Eigen::Vector4f centroid;
 //   Eigen::Matrix3f S;

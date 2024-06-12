@@ -31,7 +31,7 @@ traversability_analysis:
     Max_Num_Grids: 10
 
 
-    Global_map_resolution: 2.0
+    Global_map_resolution: 1.0
     Global_map_init_height: 50.0
     Global_map_init_width: 50.0
     Global_map_increment: 20.0

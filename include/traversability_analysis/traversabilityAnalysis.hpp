@@ -104,15 +104,22 @@ class OccupancyGrid
         int GetIndexWorldPos(Position pos);
         int8_t GetCost(int index);
         int8_t GetCost(int index_i, int index_j);
+        int8_t GetCost(Position pos);
         void SetCost(Position pos, int8_t value);
         void SetCost(int index, int8_t value);
         void SetCost(int index_i, int index_j, int8_t value);
+        double GetWeight(Position pos);
+        void SetWeight(Position pos, double value);
+        void UpdateCell(Position pos, int8_t value,double Variance);
         void CheckAndExpandMap(Position robotPos);
+        std::vector<Eigen::Vector3d> getRelativeEllipseIndices(Eigen::Matrix2d covarianceMatrix);
+        float cumulativeDistributionFunction(float x, float mean, float standardDeviation);
         nav_msgs::msg::OccupancyGrid* Map_;
         std::mutex MapMtx_;
     private:
         int num_cell_to_increment_, max_cell_to_increment_;
         float num_cell_to_increment_m_;
+        Eigen::MatrixXd Variance_;
 
 };
 
@@ -168,8 +175,7 @@ class TraversabilityAnalysis : public ParamServer{
     std::string mapFrame;
     nav_msgs::msg::OccupancyGrid::SharedPtr message_;
     OccupancyGrid* globalCostmap_;
-    Eigen::VectorXd state_;
-    Eigen::MatrixXd covariance_;
+    Eigen::Matrix2d covarianceMatrix_;
 
 };
 
