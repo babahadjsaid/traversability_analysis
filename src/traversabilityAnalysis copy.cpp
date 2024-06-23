@@ -19,7 +19,7 @@ TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclc
 {
   pointCloudSub_ = create_subscription<sensor_msgs::msg::PointCloud2>(PC_TOPIC, 1,std::bind(&TraversabilityAnalysis::PointCloudHandler, this, std::placeholders::_1));
   robotPoseSubscriber_ = create_subscription<nav_msgs::msg::Odometry>(POSE_TOPIC, qos_imu,std::bind(&TraversabilityAnalysis::OdometryHandler, this, std::placeholders::_1));
-  costMapPub_ = create_publisher<nav2_msgs::msg::Costmap>(CM_TOPIC, 1); //nav2_msgs::msg::Costmap
+  costMapPub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(CM_TOPIC, 1); //nav2_msgs::msg::Costmap
   GlobalcostMapPub_ = create_publisher<nav_msgs::msg::OccupancyGrid>("/map", 1); //nav2_msgs::msg::Costmap
   
   float side_length = RADIUS ;
@@ -29,11 +29,11 @@ TraversabilityAnalysis::TraversabilityAnalysis(std::string node_name, const rclc
   elevationMap_.setGeometry(grid_map::Length(side_length,side_length),CELL_RESOLUTION,grid_map::Position(0,0));
   size_ = elevationMap_.getSize();
   Colors_ = linspace(0,255,5);
-  message_ = std::make_shared<nav2_msgs::msg::Costmap>();
+  message_ = std::make_shared<nav_msgs::msg::OccupancyGrid>();
   message_->data.resize(size_(0) * size_(1),NO_INFORMATION);
-  message_->metadata.size_y = size_(0);
-  message_->metadata.size_x = size_(1);
-  message_->metadata.resolution = CELL_RESOLUTION;
+  message_->info.height = size_(0);
+  message_->info.width = size_(1);
+  message_->info.resolution = CELL_RESOLUTION;
   Position origin = {- (size_(1)/2.0f) * CELL_RESOLUTION,- (size_(0)/2.0f) * CELL_RESOLUTION};
   int num_max_cell = (size_(1)) * CELL_RESOLUTION/GLOBAL_MAP_RES;
   globalCostmap_ = new OccupancyGrid(GLOBAL_MAP_HEIGHT,GLOBAL_MAP_WIDTH,GLOBAL_MAP_RES,origin,num_max_cell,GLOBAL_MAP_INCR);
@@ -664,7 +664,7 @@ void TraversabilityAnalysis::PubGlobalMap(){
       for (auto &&point : tmpMap->data)
       {
         if (point <= -1) continue;
-        if (point < 40) point = 0;
+        if (point < 45) point = 0;
         else point = 100;
         
       }
@@ -675,13 +675,13 @@ void TraversabilityAnalysis::PubGlobalMap(){
     }
 }
 
-void TraversabilityAnalysis::BuildCostMap(nav2_msgs::msg::Costmap::SharedPtr localCostmap ){
+void TraversabilityAnalysis::BuildCostMap(nav_msgs::msg::OccupancyGrid::SharedPtr localCostmap ){
   
     
     localCostmap->header = std_msgs::msg::Header();
     localCostmap->header.frame_id = "odom";
-    localCostmap->metadata.origin.position.x = currentPose_.x() - (size_(1)/2.0) * CELL_RESOLUTION;
-    localCostmap->metadata.origin.position.y = currentPose_.y() - (size_(0)/2.0) * CELL_RESOLUTION;  
+    localCostmap->info.origin.position.x = currentPose_.x() - (size_(1)/2.0) * CELL_RESOLUTION;
+    localCostmap->info.origin.position.y = currentPose_.y() - (size_(0)/2.0) * CELL_RESOLUTION;  
     std::vector<Eigen::Vector3d> relativeIndices = globalCostmap_->getRelativeEllipseIndices(covarianceMatrix_);
     for (size_t i = 0; i < size_(0); i++)
     {
@@ -703,9 +703,10 @@ void TraversabilityAnalysis::BuildCostMap(nav2_msgs::msg::Costmap::SharedPtr loc
             occupancy = cat * MAX_NON_OBSTACLE;
             cost = cat * 252;
             }
+          cost = occupancy;
           Position pos;
-          pos.x = localCostmap->metadata.origin.position.x +        j       * CELL_RESOLUTION;
-          pos.y = localCostmap->metadata.origin.position.y + (size_(0)-i-1) * CELL_RESOLUTION;
+          pos.x = localCostmap->info.origin.position.x +        j       * CELL_RESOLUTION;
+          pos.y = localCostmap->info.origin.position.y + (size_(0)-i-1) * CELL_RESOLUTION;
           for (const auto& relIdx : relativeIndices) {
                   Position globalPos;
                   pos.x += relIdx.x() * globalCostmap_->Map_->info.resolution;

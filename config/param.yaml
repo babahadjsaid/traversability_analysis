@@ -2,9 +2,9 @@ traversability_analysis:
   ros__parameters:
     pointCloudTopic: "lio_sam/mapping/map_global"
     pose_topic: "odometry/imu"
-    costMapTopic: "local_map"
+    costMapTopic: "/local_map"
 
-    map_frame_id: "map"
+    map_frame_id: "/map"
     circle_radius: 10.0
     cell_resolution: 0.17
     T_diff: 0.4
