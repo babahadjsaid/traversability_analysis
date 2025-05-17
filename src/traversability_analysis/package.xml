@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>traversability_analysis</name>
+  <version>0.0.1</version>
+  <description>some description</description>
+  <maintainer email="baba066h.s@gmail.com">Baba HADJ SAID</maintainer>
+  <license>BSD</license>
+  
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>eigen</depend>
+  <depend>pcl</depend>
+  <depend>grid_map_core</depend>
+  <depend>grid_map_ros</depend>
+  <depend>grid_map_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>sensor_msgs</depend>
+
+ 
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>

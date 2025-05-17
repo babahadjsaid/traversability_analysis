@@ -1,0 +1,46 @@
+traversability_analysis:
+  ros__parameters:
+    pointCloudTopic: "lio_sam/mapping/map_global"
+    pose_topic: "odometry/imu"
+    costMapTopic: "/local_map"
+
+    map_frame_id: "map_centric"
+    map_length: 10.0
+    cell_resolution: 0.17
+    T_diff: 0.4
+    T_high: 0.23
+    T_low: -0.24
+    max_height: 2.0
+    Treshold: 9.0
+    mean_grass: 24.8704
+    variance_grass: 20.9897
+    T_prob: 1.0e-7
+    num_grids_min: 3
+
+    T_ratio: 20.0
+    T_l: 0.2
+    T_s: 4.0
+
+    T_neg: -0.15
+    T_pos: 0.15
+    T_seg: 0.35
+    T_inliners: 0.95
+    T_Vertical: 0.75
+    Max_traversable_angle: 50.0
+    Num_Colors: 50
+    Max_Num_Grids: 10
+
+
+    Global_map_resolution: 1.0
+    Global_map_init_height: 50.0
+    Global_map_init_width: 50.0
+    Global_map_increment: 20.0
+
+
+# For Debuging.
+    gridMapTopic: "/grid_map"
+    Logger: true
+    LoggerLevel: "DEBUG"
+    LoggerFilename: "TraversabilityAnalysis.json"
+    LoggerDirectory: "./.log/"
+

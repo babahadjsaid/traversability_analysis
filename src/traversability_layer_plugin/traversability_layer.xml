@@ -1,0 +1,6 @@
+<library path="traversability_layer_plugin_core">
+  <class name="traversability_layer_plugin/TraversabilityLayer" type="traversability_layer_plugin::TraversabilityLayer" base_class_type="nav2_costmap_2d::Layer">
+    <description>some description To write later...</description>
+  </class>
+</library>
+ 

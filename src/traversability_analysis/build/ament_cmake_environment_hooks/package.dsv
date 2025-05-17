@@ -1,0 +1,4 @@
+source;share/traversability_analysis/local_setup.bash
+source;share/traversability_analysis/local_setup.dsv
+source;share/traversability_analysis/local_setup.sh
+source;share/traversability_analysis/local_setup.zsh

@@ -1,0 +1,17 @@
+add rs_driver directly to project.
+add the madwwick filter directly to projct.
+Think about adding the ability to register obsticales;
+Think about making a Navigation based on tasks.
+(In the Removing moving object) fix the problem of blank frames....
+
+default malware export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+nav2 middleware export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+
+Find the topic to send the local map to.
+update the code.
+
+# to run docker `docker run --init -it -d   --name Traversability-humble-jammy-container   -v /etc/localtime:/etc/localtime:ro   -v /etc/timezone:/etc/timezone:ro   -v /tmp/.X11-unix:/tmp/.X11-unix   -e DISPLAY=$DISPLAY   --runtime=nvidia --gpus all   Traversability-humble-jammy   bash
+`
+
+
